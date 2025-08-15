@@ -5,10 +5,12 @@ import os.path
 from urllib.parse import urljoin
 from pydantic import BaseModel
 
+
 class PathPermission(BaseModel):
     username: str
     path: str
     permission: str
+
 
 class DataStore(object):
     def __init__(self, api_url: str):
@@ -25,13 +27,15 @@ class DataStore(object):
         return body["permissions"]
 
     def path_exists(self, path: str) -> bool:
-        r = httpx.get(self._url_join(["path", "exists"]), params={"path":path})
+        r = httpx.get(self._url_join(["path", "exists"]), params={"path": path})
         r.raise_for_status()
         body = r.json()
         return body["exists"]
 
     def path_permissions(self, path: str) -> list[object]:
-        r = httpx.get(self._url_join(["path", "permissions"]), params={"path":path})
+        r = httpx.get(
+            self._url_join(["path", "permissions"]), params={"path": path}
+        )
         r.raise_for_status()
         body = r.json()
         return body["permissions"]
@@ -47,6 +51,11 @@ class DataStore(object):
         r.raise_for_status()
         return r.json()
 
+    def user_home(self, username: str):
+        r = httpx.get(self._url_join(["users", username, "home"]))
+        r.raise_for_status()
+        return r.json()
+
     def delete_user(self, username: str):
         r = httpx.delete(self._url_join(["users", username]))
         r.raise_for_status()
@@ -58,11 +67,16 @@ class DataStore(object):
         return r.json()
 
     def change_password(self, username: str, new_password):
-        r = httpx.post(self._url_join(["users", username, "password"]), json={"password":new_password})
+        r = httpx.post(
+            self._url_join(["users", username, "password"]),
+            json={"password": new_password},
+        )
         r.raise_for_status()
         return r.json()
 
     def chmod(self, perm: PathPermission):
-        r = httpx.post(self._url_join(["path", "chmod"]), json=perm.model_dump())
+        r = httpx.post(
+            self._url_join(["path", "chmod"]), json=perm.model_dump()
+        )
         r.raise_for_status()
         return r.json()
