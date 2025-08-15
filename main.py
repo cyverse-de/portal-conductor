@@ -5,6 +5,8 @@ import portal_datastore
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from ldap import LDAPError
+
 app = FastAPI()
 
 portal_ldap_url = "http://portal-ldap/"
@@ -17,6 +19,25 @@ portal_datastore_env = os.environ.get("PORTAL_DATASTORE_URL")
 if portal_datastore_env is not None:
     portal_datastore_url = portal_datastore_env
 
+ldap_everyone_group = os.environ.get("LDAP_EVERYONE_GROUP")
+if ldap_everyone_group is None:
+    print("LDAP_EVERYONE_GROUP must be set", file=sys.stderr)
+    os.exit(1)
+
+ldap_community_group = "community"
+ldap_community_group_env = os.environ.get("LDAP_COMMUNITY_GROUP")
+if ldap_community_group_env is not None:
+    ldap_community_group = ldap_community_group_env
+
+ipcservices_user = "ipcservices"
+ipcservices_user_env = os.environ.get("IPCSERVICES_USER")
+if ipcservices_user_env is not None:
+    ipcservices_user = ipcservices_user_env
+
+ds_admin_user = "rodsadmin"
+ds_admin_user_env = os.environ.get("DS_ADMIN_USER")
+if ds_admin_user_env is not None:
+    ds_admin_user = ds_admin_user_env
 
 ldap_api = portal_ldap.LDAP(portal_ldap_url)
 ds_api = portal_datastore.DataStore(portal_datastore_url)
@@ -36,25 +57,47 @@ class CreateUserRequest(BaseModel):
 
 @app.post("/users", status_code=200)
 def add_user(user: CreateUserRequest):
-    # Create the user in ldap_api
-    # Change the password for some reason
-    # Add the user to the everyone group
-    # Add the user to the community group
-    # Create the Data Store user
-    # Change the Data Store password
-    # Grant access to the user's home directory to the ipcservices user
-    # Grant access to the user's home directory to the rodsadmin
-    # Subscribe the user to the newsletter
+    try:
+        new_user = ldap_api.create_user(user)
+        ldap_api.change_password(user.username, user.password)
+        ldap_api.add_user_to_group(user.username, ldap_everyone_group)
+        ldap_api.add_user_to_group(user.username, ldap_community_group)
+        ds_api.create_user(user.username)
+        ds_api.change_password(user.username, user.password)
+        home_dir = ds_api.user_home(user.username)
+        ipcservices_perm = portal_datastore.PathPermission(
+            username=ipcservices_user,
+            permissions="own",
+            path=home_dir,
+        )
+        rodsadmin_perm = portal_datastore.PathPermission(
+            username=rodsadmin_perm,
+            permissions="own",
+            path=home_dir,
+        )
+        ds_api.chmod(ipcservices_perm)
+        ds_api.chmod(rodsadmin_perm)
+    except Exception as err:
+        raise HTTPException(500, err)
 
 
 @app.post("/users/{username}/password", status_code=200)
 def change_password(username: str, password: str):
-    # Change the user's password in LDAP
-    # Shadow the last change
-    # Set the password in the data store.
+    try:
+        ldap_api.change_password(username, password)
+        ldap_api.shadow_last_change(username)
+        ds_api.change_password(username, password)
+    except Exception as err:
+        raise HTTPException(500, err)
 
 
 @app.delete("/user/{username}", status_code=200)
 def delete_user(username: str):
-    # Remove the user from any groups that it's in.
-    # Remove the LDAP user.
+    try:
+        user_groups = ldap_api.get_user_groups(username)
+        for ug in user_groups:
+            group_name = ug[1]["cn"]
+            ldap_api.remove_user_from_group(username, group_name)
+        ldap_api.delete_user(username)
+    except Exception as err:
+        raise HTTPException(500, err)
