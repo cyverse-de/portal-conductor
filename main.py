@@ -1,11 +1,11 @@
 import os
+import sys
 import portal_ldap
 import portal_datastore
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from ldap import LDAPError
 
 app = FastAPI()
 
@@ -22,7 +22,7 @@ if portal_datastore_env is not None:
 ldap_everyone_group = os.environ.get("LDAP_EVERYONE_GROUP")
 if ldap_everyone_group is None:
     print("LDAP_EVERYONE_GROUP must be set", file=sys.stderr)
-    os.exit(1)
+    sys.exit(1)
 
 ldap_community_group = "community"
 ldap_community_group_env = os.environ.get("LDAP_COMMUNITY_GROUP")
