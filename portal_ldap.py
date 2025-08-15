@@ -49,7 +49,7 @@ class LDAP(object):
     def get_user_groups(self, username: str) -> map:
         r = httpx.get(self.api_url("users", username, "groups"))
         r.raise_for_status()
-        return r.json()
+        return r.json()["groups"]
 
     def add_user_to_group(self, username: str, group: str) -> map:
         r = httpx.post(self.api_url("groups", group), json={"user": username})

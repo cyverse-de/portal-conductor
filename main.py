@@ -1,13 +1,34 @@
 import os
 import sys
+import pprint
 import portal_ldap
 import portal_datastore
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel
 
 
 app = FastAPI()
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    print(exc)
+    return JSONResponse(
+        content={"detail": exc.detail}, status_code=exc.status_code
+    )
+
+
+@app.middleware("http")
+async def exception_handling_middleware(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as e:
+        print(str(e))
+        return JSONResponse(content=str(e), status_code=500)
+
 
 portal_ldap_url = "http://portal-ldap/"
 portal_ldap_env = os.environ.get("PORTAL_LDAP_URL")
@@ -57,47 +78,41 @@ class CreateUserRequest(BaseModel):
 
 @app.post("/users", status_code=200)
 def add_user(user: CreateUserRequest):
-    try:
-        new_user = ldap_api.create_user(user)
-        ldap_api.change_password(user.username, user.password)
-        ldap_api.add_user_to_group(user.username, ldap_everyone_group)
-        ldap_api.add_user_to_group(user.username, ldap_community_group)
-        ds_api.create_user(user.username)
-        ds_api.change_password(user.username, user.password)
-        home_dir = ds_api.user_home(user.username)
-        ipcservices_perm = portal_datastore.PathPermission(
-            username=ipcservices_user,
-            permissions="own",
-            path=home_dir,
-        )
-        rodsadmin_perm = portal_datastore.PathPermission(
-            username=rodsadmin_perm,
-            permissions="own",
-            path=home_dir,
-        )
-        ds_api.chmod(ipcservices_perm)
-        ds_api.chmod(rodsadmin_perm)
-    except Exception as err:
-        raise HTTPException(500, err)
+    ldap_api.create_user(user)
+    ldap_api.change_password(user.username, user.password)
+    ldap_api.add_user_to_group(user.username, ldap_everyone_group)
+    ldap_api.add_user_to_group(user.username, ldap_community_group)
+    ds_api.create_user(user.username)
+    ds_api.change_password(user.username, user.password)
+    home_dir = ds_api.user_home(user.username)
+    ipcservices_perm = portal_datastore.PathPermission(
+        username=ipcservices_user,
+        permission="own",
+        path=home_dir,
+    )
+    rodsadmin_perm = portal_datastore.PathPermission(
+        username=ds_admin_user,
+        permission="own",
+        path=home_dir,
+    )
+    ds_api.chmod(ipcservices_perm)
+    ds_api.chmod(rodsadmin_perm)
+    return {"user": user.username}
 
 
 @app.post("/users/{username}/password", status_code=200)
 def change_password(username: str, password: str):
-    try:
-        ldap_api.change_password(username, password)
-        ldap_api.shadow_last_change(username)
-        ds_api.change_password(username, password)
-    except Exception as err:
-        raise HTTPException(500, err)
+    ldap_api.change_password(username, password)
+    ldap_api.shadow_last_change(username)
+    ds_api.change_password(username, password)
+    return {"user": username}
 
 
 @app.delete("/user/{username}", status_code=200)
 def delete_user(username: str):
-    try:
-        user_groups = ldap_api.get_user_groups(username)
-        for ug in user_groups:
-            group_name = ug[1]["cn"]
-            ldap_api.remove_user_from_group(username, group_name)
-        ldap_api.delete_user(username)
-    except Exception as err:
-        raise HTTPException(500, err)
+    user_groups = ldap_api.get_user_groups(username)
+    for ug in user_groups:
+        group_name = ug[1]["cn"][0]
+        ldap_api.remove_user_from_group(username, group_name)
+    ldap_api.delete_user(username)
+    return {"user": username}

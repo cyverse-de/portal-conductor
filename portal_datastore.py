@@ -54,7 +54,7 @@ class DataStore(object):
     def user_home(self, username: str):
         r = httpx.get(self._url_join(["users", username, "home"]))
         r.raise_for_status()
-        return r.json()
+        return r.json()["home"]
 
     def delete_user(self, username: str):
         r = httpx.delete(self._url_join(["users", username]))
