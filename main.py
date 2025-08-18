@@ -76,6 +76,11 @@ class CreateUserRequest(BaseModel):
     title: str
 
 
+@app.get("/", status_code=200)
+def greeting():
+    return "Hello from portal-conductor."
+
+
 @app.post("/users", status_code=200)
 def add_user(user: CreateUserRequest):
     ldap_api.create_user(user)
