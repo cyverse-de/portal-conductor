@@ -157,3 +157,8 @@ def service_registration(request: ServiceRegistrationRequest):
             irods_path=svc_cfg["irods_path"],
             irods_user=svc_cfg["irods_user"] if "irods_user" in svc_cfg else None,
         )
+
+    if "custom_action" in svc_cfg:
+        custom_action = svc_cfg["custom_action"]
+        if callable(custom_action):
+            custom_action(request)
