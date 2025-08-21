@@ -1,8 +1,10 @@
 import os
+import os.path
 import sys
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import portal_datastore
@@ -81,7 +83,7 @@ def change_password(username: str, password: str):
     return {"user": username}
 
 
-@app.delete("/user/{username}", status_code=200)
+@app.delete("/users/{username}", status_code=200)
 def delete_user(username: str):
     user_groups = ldap_api.get_user_groups(username)
     for ug in user_groups:
@@ -89,3 +91,69 @@ def delete_user(username: str):
         ldap_api.remove_user_from_group(username, group_name)
     ldap_api.delete_user(username)
     return {"user": username}
+
+
+class ServiceRegistrationUser(BaseModel):
+    username: str
+    email: str
+
+
+class ServiceRegistrationService(BaseModel):
+    name: str
+    approval_key: str
+
+
+class ServiceRegistrationRequest(BaseModel):
+    user: ServiceRegistrationUser
+    service: ServiceRegistrationService
+
+
+def set_vice_job_limit():
+    pass
+
+
+services_config = {
+    "COGE": {
+        "irods_path": "coge_data",
+    },
+    "DISCOVERY_ENVIRONMENT": {
+        "ldap_group": "de-preview-access",
+        "mailing_list": ["de-users", "datastore-users"],
+    },
+    "SCI_APPS": {
+        "irods_path": "sci_data",
+        "irods_user": "maizecode",
+    },
+    "VICE": {
+        "custom_action": set_vice_job_limit,
+    },
+}
+
+
+@app.post("/services/register", status_code=200)
+def service_registration(request: ServiceRegistrationRequest):
+    approval_key = request.service.approval_key
+    if approval_key not in services_config:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid service approval key: {approval_key}",
+        )
+
+    user = request.user
+    if user is None or user.username is None:
+        raise HTTPException(
+            status_code=400,
+            detail="User information is required for service registration.",
+        )
+
+    svc_cfg = services_config[approval_key]
+
+    if "ldap_group" in svc_cfg:
+        ldap_api.add_user_to_group(user.username, svc_cfg["ldap_group"])
+
+    if "irods_path" in svc_cfg:
+        ds_api.register_service(
+            username=user.username,
+            irods_path=svc_cfg["irods_path"],
+            irods_user=svc_cfg["irods_user"] if "irods_user" in svc_cfg else None,
+        )

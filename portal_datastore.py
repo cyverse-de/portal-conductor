@@ -1,8 +1,8 @@
-import httpx
 import functools
 import os.path
-
 from urllib.parse import urljoin
+
+import httpx
 from pydantic import BaseModel
 
 
@@ -33,9 +33,7 @@ class DataStore(object):
         return body["exists"]
 
     def path_permissions(self, path: str) -> list[object]:
-        r = httpx.get(
-            self._url_join(["path", "permissions"]), params={"path": path}
-        )
+        r = httpx.get(self._url_join(["path", "permissions"]), params={"path": path})
         r.raise_for_status()
         body = r.json()
         return body["permissions"]
@@ -75,8 +73,22 @@ class DataStore(object):
         return r.json()
 
     def chmod(self, perm: PathPermission):
+        r = httpx.post(self._url_join(["path", "chmod"]), json=perm.model_dump())
+        r.raise_for_status()
+        return r.json()
+
+    def register_service(
+        self, username: str, irods_path: str, irods_user: str | None = None
+    ):
+        body = {
+            "username": username,
+            "irods_path": irods_path,
+        }
+        if irods_user is not None:
+            body["irods_user"] = irods_user
         r = httpx.post(
-            self._url_join(["path", "chmod"]), json=perm.model_dump()
+            self._url_join(["services", "register"]),
+            json=body,
         )
         r.raise_for_status()
         return r.json()
