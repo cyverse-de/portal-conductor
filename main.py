@@ -1,5 +1,4 @@
 import os
-import os.path
 import sys
 
 from fastapi import FastAPI, HTTPException, Request
@@ -7,8 +6,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+import mailman
 import portal_datastore
 import portal_ldap
+import terrain
 
 app = FastAPI()
 
@@ -35,15 +36,45 @@ portal_datastore_url = (
 ldap_community_group = os.environ.get("LDAP_COMMUNITY_GROUP") or "community"
 ipcservices_user = os.environ.get("IPCSERVICES_USER") or "ipcservices"
 ds_admin_user = os.environ.get("DS_ADMIN_USER") or "rodsadmin"
+terrain_url = os.environ.get("TERRAIN_URL") or "http://terrain/"
+
+terrain_user = os.environ.get("TERRAIN_USER") or ""
+if terrain_user == "":
+    print("TERRAIN_USER must be set", file=sys.stderr)
+    sys.exit(1)
+
+terrain_password = os.environ.get("TERRAIN_PASSWORD") or ""
+if terrain_password == "":
+    print("TERRAIN_PASSWORD must be set", file=sys.stderr)
+    sys.exit(1)
 
 ldap_everyone_group = os.environ.get("LDAP_EVERYONE_GROUP") or ""
 if ldap_everyone_group == "":
     print("LDAP_EVERYONE_GROUP must be set", file=sys.stderr)
     sys.exit(1)
 
+mailman_enabled = os.environ.get("MAILMAN_ENABLED") or "false"
+mailman_enabled = mailman_enabled.lower() in ["1", "true", "yes"]
+if not mailman_enabled:
+    print("MAILMAN_ENABLED is not set to true, mailman integration disabled")
+
+mailmain_url = os.environ.get("MAILMAN_URL") or ""
+if mailmain_url == "":
+    print("MAILMAN_URL must be set", file=sys.stderr)
+    sys.exit(1)
+
+mailman_password = os.environ.get("MAILMAN_PASSWORD") or ""
+if mailman_password == "":
+    print("MAILMAN_PASSWORD must be set", file=sys.stderr)
+    sys.exit(1)
+
 
 ldap_api = portal_ldap.LDAP(portal_ldap_url)
 ds_api = portal_datastore.DataStore(portal_datastore_url)
+terrain_api = terrain.Terrain(
+    api_url=terrain_url, username=terrain_user, password=terrain_password
+)
+email_api = mailman.Mailman(api_url=mailmain_url, password=mailman_password)
 
 
 @app.get("/", status_code=200)
@@ -91,6 +122,20 @@ def delete_user(username: str):
         ldap_api.remove_user_from_group(username, group_name)
     ldap_api.delete_user(username)
     return {"user": username}
+
+
+@app.delete("/emails/lists/{list_name}/addresses/{addr}", status_code=200)
+def remove_addr_from_list(list_name: str, addr: str):
+    if mailman_enabled:
+        email_api.remove_member(list_name, addr)
+    return {"list": list_name, "email": addr}
+
+
+@app.post("/emails/lists/{list_name}/addresses/{addr}", status_code=200)
+def add_addr_to_list(list_name: str, addr: str):
+    if mailman_enabled:
+        email_api.add_member(list_name, addr)
+    return {"list": list_name, "email": addr}
 
 
 class ServiceRegistrationUser(BaseModel):
@@ -158,7 +203,17 @@ def service_registration(request: ServiceRegistrationRequest):
             irods_user=svc_cfg["irods_user"] if "irods_user" in svc_cfg else None,
         )
 
+    if "mailing_list" in svc_cfg and mailman_enabled:
+        mailing_lists = svc_cfg["mailing_list"]
+        if isinstance(mailing_lists, str):
+            mailing_lists = [mailing_lists]
+        for ml in mailing_lists:
+            email_api.add_member(ml, user.email)
+
     if "custom_action" in svc_cfg:
-        custom_action = svc_cfg["custom_action"]
-        if callable(custom_action):
-            custom_action(request)
+        custom_actions = svc_cfg["custom_action"]
+        if not isinstance(custom_actions, list):
+            custom_actions = [custom_actions]
+        for ca in custom_actions:
+            if callable(ca):
+                ca(request)
