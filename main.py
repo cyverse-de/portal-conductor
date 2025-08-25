@@ -181,6 +181,8 @@ def service_names():
 
 @app.post("/services/register", status_code=200)
 def service_registration(request: ServiceRegistrationRequest):
+    retval = {}
+
     approval_key = request.service.approval_key
     if approval_key not in services_config:
         raise HTTPException(
@@ -197,8 +199,12 @@ def service_registration(request: ServiceRegistrationRequest):
 
     svc_cfg = services_config[approval_key]
 
+    retval["user"] = user.username
+    retval["service"] = approval_key
+
     if "ldap_group" in svc_cfg:
         ldap_api.add_user_to_group(user.username, svc_cfg["ldap_group"])
+        retval["ldap_group"] = svc_cfg["ldap_group"]
 
     if "irods_path" in svc_cfg:
         ds_api.register_service(
@@ -206,6 +212,9 @@ def service_registration(request: ServiceRegistrationRequest):
             irods_path=svc_cfg["irods_path"],
             irods_user=svc_cfg["irods_user"] if "irods_user" in svc_cfg else None,
         )
+        retval["irods_path"] = svc_cfg["irods_path"]
+        if "irods_user" in svc_cfg:
+            retval["irods_user"] = svc_cfg["irods_user"]
 
     if "mailing_list" in svc_cfg and mailman_enabled:
         mailing_lists = svc_cfg["mailing_list"]
@@ -213,6 +222,7 @@ def service_registration(request: ServiceRegistrationRequest):
             mailing_lists = [mailing_lists]
         for ml in mailing_lists:
             email_api.add_member(ml, user.email)
+        retval["mailing_list"] = mailing_lists
 
     if "custom_action" in svc_cfg:
         custom_actions = svc_cfg["custom_action"]
@@ -221,3 +231,6 @@ def service_registration(request: ServiceRegistrationRequest):
         for ca in custom_actions:
             if callable(ca):
                 ca(request)
+        retval["custom_action"] = "completed"
+
+    return retval
