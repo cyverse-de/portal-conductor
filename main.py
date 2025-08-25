@@ -144,7 +144,6 @@ class ServiceRegistrationUser(BaseModel):
 
 
 class ServiceRegistrationService(BaseModel):
-    name: str
     approval_key: str
 
 
@@ -175,9 +174,9 @@ services_config = {
 }
 
 
-@app.get("/services/names", status_code=200)
+@app.get("/services/approval-keys", status_code=200)
 def service_names():
-    return {"services": list(services_config.keys())}
+    return {"approval_keys": list(services_config.keys())}
 
 
 @app.post("/services/register", status_code=200)
