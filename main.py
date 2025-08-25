@@ -175,6 +175,11 @@ services_config = {
 }
 
 
+@app.get("/services/names", status_code=200)
+def service_names():
+    return {"services": list(services_config.keys())}
+
+
 @app.post("/services/register", status_code=200)
 def service_registration(request: ServiceRegistrationRequest):
     approval_key = request.service.approval_key
