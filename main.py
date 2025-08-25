@@ -152,8 +152,11 @@ class ServiceRegistrationRequest(BaseModel):
     service: ServiceRegistrationService
 
 
-def set_vice_job_limit():
-    pass
+def set_vice_job_limit(request: ServiceRegistrationRequest):
+    token = terrain_api.get_keycloak_token()
+    terrain_api.set_concurrent_job_limits(
+        token=token, username=request.user.username, limit="2"
+    )
 
 
 services_config = {
