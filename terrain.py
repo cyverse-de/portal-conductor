@@ -8,12 +8,13 @@ import httpx
 
 class Terrain(object):
     def __init__(self, api_url: str, username: str, password: str):
-        self.base_url = api_url
+        self.base_url = f"{api_url}/" if not api_url.endswith("/") else api_url
         self.username = username
         self.password = password
 
     def api_url(self, *parts: str):
-        part_path = functools.reduce(os.path.join, parts, "/")
+        base_url = f"{self.}"
+        part_path = functools.reduce(os.path.join, parts, "/").removeprefix("/")
         return urljoin(self.base_url, part_path)
 
     def get_keycloak_token(self):
