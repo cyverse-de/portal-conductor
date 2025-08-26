@@ -206,7 +206,11 @@ def service_registration(request: ServiceRegistrationRequest):
     retval["service"] = approval_key
 
     if "ldap_group" in svc_cfg:
-        ldap_api.add_user_to_group(user.username, svc_cfg["ldap_group"])
+        user_groups = list(
+            map(lambda g: g[1]["cn"][0], ldap_api.get_user_groups(user.username))
+        )
+        if svc_cfg["ldap_group"] not in user_groups:
+            ldap_api.add_user_to_group(user.username, svc_cfg["ldap_group"])
         retval["ldap_group"] = svc_cfg["ldap_group"]
 
     if "irods_path" in svc_cfg:

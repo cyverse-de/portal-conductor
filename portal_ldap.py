@@ -1,8 +1,8 @@
-import httpx
 import functools
 import os.path
-
 from urllib.parse import urljoin
+
+import httpx
 from pydantic import BaseModel
 
 
@@ -46,7 +46,7 @@ class LDAP(object):
         r.raise_for_status()
         return r.json()
 
-    def get_user_groups(self, username: str) -> map:
+    def get_user_groups(self, username: str) -> list[list]:
         r = httpx.get(self.api_url("users", username, "groups"))
         r.raise_for_status()
         return r.json()["groups"]
