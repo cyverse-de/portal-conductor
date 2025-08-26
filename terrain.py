@@ -13,7 +13,6 @@ class Terrain(object):
         self.password = password
 
     def api_url(self, *parts: str):
-        base_url = f"{self.}"
         part_path = functools.reduce(os.path.join, parts, "/").removeprefix("/")
         return urljoin(self.base_url, part_path)
 
