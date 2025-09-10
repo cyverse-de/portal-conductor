@@ -85,153 +85,6 @@ terrain_api = terrain.Terrain(
 email_api = mailman.Mailman(api_url=mailmain_url, password=mailman_password)
 
 
-@app.get("/", status_code=200, tags=["Health"])
-def greeting():
-    """
-    Health check endpoint that returns a greeting message.
-    """
-    return "Hello from portal-conductor."
-
-
-@app.post("/users", status_code=200, response_model=UserResponse, tags=["User Management"])
-def add_user(user: portal_ldap.CreateUserRequest):
-    """
-    Create a new user account in the CyVerse platform.
-    
-    This endpoint:
-    - Creates the user in LDAP
-    - Sets the user's password
-    - Adds the user to default groups (everyone and community)
-    - Creates the user's home directory in the data store
-    - Sets appropriate permissions on the home directory
-    
-    Args:
-        user: User information including personal details and credentials
-        
-    Returns:
-        UserResponse: Confirmation with the created username
-        
-    Raises:
-        HTTPException: If user creation fails in LDAP or data store
-    """
-    ldap_api.create_user(user)
-    ldap_api.change_password(user.username, user.password)
-    ldap_api.add_user_to_group(user.username, ldap_everyone_group)
-    ldap_api.add_user_to_group(user.username, ldap_community_group)
-    ds_api.create_user(user.username)
-    ds_api.change_password(user.username, user.password)
-    home_dir = ds_api.user_home(user.username)
-    ipcservices_perm = portal_datastore.PathPermission(
-        username=ipcservices_user,
-        permission="own",
-        path=home_dir,
-    )
-    rodsadmin_perm = portal_datastore.PathPermission(
-        username=ds_admin_user,
-        permission="own",
-        path=home_dir,
-    )
-    ds_api.chmod(ipcservices_perm)
-    ds_api.chmod(rodsadmin_perm)
-    return {"user": user.username}
-
-
-@app.post("/users/{username}/password", status_code=200, response_model=UserResponse, tags=["User Management"])
-def change_password(username: str, request: PasswordChangeRequest):
-    """
-    Change a user's password across all systems.
-    
-    Updates the password in both LDAP and the data store, and updates
-    the shadow last change timestamp in LDAP.
-    
-    Args:
-        username: The username whose password should be changed
-        request: The new password
-        
-    Returns:
-        UserResponse: Confirmation with the username
-        
-    Raises:
-        HTTPException: If password change fails in LDAP or data store
-    """
-    ldap_api.change_password(username, request.password)
-    ldap_api.shadow_last_change(username)
-    ds_api.change_password(username, request.password)
-    return {"user": username}
-
-
-@app.delete("/users/{username}", status_code=200, response_model=UserResponse, tags=["User Management"])
-def delete_user(username: str):
-    """
-    Delete a user account from LDAP.
-    
-    Removes the user from all groups they belong to and then deletes
-    the user account from LDAP. Note: This does not delete the user's
-    data store account or files.
-    
-    Args:
-        username: The username to delete
-        
-    Returns:
-        UserResponse: Confirmation with the deleted username
-        
-    Raises:
-        HTTPException: If user deletion fails
-    """
-    user_groups = ldap_api.get_user_groups(username)
-    for ug in user_groups:
-        group_name = ug[1]["cn"][0]
-        ldap_api.remove_user_from_group(username, group_name)
-    ldap_api.delete_user(username)
-    return {"user": username}
-
-
-@app.delete("/emails/lists/{list_name}/addresses/{addr}", status_code=200, response_model=EmailListResponse, tags=["Email Management"])
-def remove_addr_from_list(list_name: str, addr: str):
-    """
-    Remove an email address from a mailing list.
-    
-    If Mailman integration is enabled, removes the specified email address
-    from the given mailing list.
-    
-    Args:
-        list_name: The name of the mailing list
-        addr: The email address to remove
-        
-    Returns:
-        EmailListResponse: Confirmation with list name and email address
-        
-    Raises:
-        HTTPException: If removal fails or list doesn't exist
-    """
-    if mailman_enabled:
-        email_api.remove_member(list_name, addr)
-    return {"list": list_name, "email": addr}
-
-
-@app.post("/emails/lists/{list_name}/addresses/{addr}", status_code=200, response_model=EmailListResponse, tags=["Email Management"])
-def add_addr_to_list(list_name: str, addr: str):
-    """
-    Add an email address to a mailing list.
-    
-    If Mailman integration is enabled, adds the specified email address
-    to the given mailing list.
-    
-    Args:
-        list_name: The name of the mailing list
-        addr: The email address to add
-        
-    Returns:
-        EmailListResponse: Confirmation with list name and email address
-        
-    Raises:
-        HTTPException: If addition fails or list doesn't exist
-    """
-    if mailman_enabled:
-        email_api.add_member(list_name, addr)
-    return {"list": list_name, "email": addr}
-
-
 class PasswordChangeRequest(BaseModel):
     password: str
 
@@ -273,6 +126,175 @@ class ServiceRegistrationResponse(BaseModel):
     custom_action: str | None = None
 
 
+@app.get("/", status_code=200, tags=["Health"])
+def greeting():
+    """
+    Health check endpoint that returns a greeting message.
+    """
+    return "Hello from portal-conductor."
+
+
+@app.post(
+    "/users", status_code=200, response_model=UserResponse, tags=["User Management"]
+)
+def add_user(user: portal_ldap.CreateUserRequest):
+    """
+    Create a new user account in the CyVerse platform.
+
+    This endpoint:
+    - Creates the user in LDAP
+    - Sets the user's password
+    - Adds the user to default groups (everyone and community)
+    - Creates the user's home directory in the data store
+    - Sets appropriate permissions on the home directory
+
+    Args:
+        user: User information including personal details and credentials
+
+    Returns:
+        UserResponse: Confirmation with the created username
+
+    Raises:
+        HTTPException: If user creation fails in LDAP or data store
+    """
+    ldap_api.create_user(user)
+    ldap_api.change_password(user.username, user.password)
+    ldap_api.add_user_to_group(user.username, ldap_everyone_group)
+    ldap_api.add_user_to_group(user.username, ldap_community_group)
+    ds_api.create_user(user.username)
+    ds_api.change_password(user.username, user.password)
+    home_dir = ds_api.user_home(user.username)
+    ipcservices_perm = portal_datastore.PathPermission(
+        username=ipcservices_user,
+        permission="own",
+        path=home_dir,
+    )
+    rodsadmin_perm = portal_datastore.PathPermission(
+        username=ds_admin_user,
+        permission="own",
+        path=home_dir,
+    )
+    ds_api.chmod(ipcservices_perm)
+    ds_api.chmod(rodsadmin_perm)
+    return {"user": user.username}
+
+
+@app.post(
+    "/users/{username}/password",
+    status_code=200,
+    response_model=UserResponse,
+    tags=["User Management"],
+)
+def change_password(username: str, request: PasswordChangeRequest):
+    """
+    Change a user's password across all systems.
+
+    Updates the password in both LDAP and the data store, and updates
+    the shadow last change timestamp in LDAP.
+
+    Args:
+        username: The username whose password should be changed
+        request: The new password
+
+    Returns:
+        UserResponse: Confirmation with the username
+
+    Raises:
+        HTTPException: If password change fails in LDAP or data store
+    """
+    ldap_api.change_password(username, request.password)
+    ldap_api.shadow_last_change(username)
+    ds_api.change_password(username, request.password)
+    return {"user": username}
+
+
+@app.delete(
+    "/users/{username}",
+    status_code=200,
+    response_model=UserResponse,
+    tags=["User Management"],
+)
+def delete_user(username: str):
+    """
+    Delete a user account from LDAP.
+
+    Removes the user from all groups they belong to and then deletes
+    the user account from LDAP. Note: This does not delete the user's
+    data store account or files.
+
+    Args:
+        username: The username to delete
+
+    Returns:
+        UserResponse: Confirmation with the deleted username
+
+    Raises:
+        HTTPException: If user deletion fails
+    """
+    user_groups = ldap_api.get_user_groups(username)
+    for ug in user_groups:
+        group_name = ug[1]["cn"][0]
+        ldap_api.remove_user_from_group(username, group_name)
+    ldap_api.delete_user(username)
+    return {"user": username}
+
+
+@app.delete(
+    "/emails/lists/{list_name}/addresses/{addr}",
+    status_code=200,
+    response_model=EmailListResponse,
+    tags=["Email Management"],
+)
+def remove_addr_from_list(list_name: str, addr: str):
+    """
+    Remove an email address from a mailing list.
+
+    If Mailman integration is enabled, removes the specified email address
+    from the given mailing list.
+
+    Args:
+        list_name: The name of the mailing list
+        addr: The email address to remove
+
+    Returns:
+        EmailListResponse: Confirmation with list name and email address
+
+    Raises:
+        HTTPException: If removal fails or list doesn't exist
+    """
+    if mailman_enabled:
+        email_api.remove_member(list_name, addr)
+    return {"list": list_name, "email": addr}
+
+
+@app.post(
+    "/emails/lists/{list_name}/addresses/{addr}",
+    status_code=200,
+    response_model=EmailListResponse,
+    tags=["Email Management"],
+)
+def add_addr_to_list(list_name: str, addr: str):
+    """
+    Add an email address to a mailing list.
+
+    If Mailman integration is enabled, adds the specified email address
+    to the given mailing list.
+
+    Args:
+        list_name: The name of the mailing list
+        addr: The email address to add
+
+    Returns:
+        EmailListResponse: Confirmation with list name and email address
+
+    Raises:
+        HTTPException: If addition fails or list doesn't exist
+    """
+    if mailman_enabled:
+        email_api.add_member(list_name, addr)
+    return {"list": list_name, "email": addr}
+
+
 def set_vice_job_limit(request: ServiceRegistrationRequest):
     token = terrain_api.get_keycloak_token()
     terrain_api.set_concurrent_job_limits(
@@ -298,43 +320,53 @@ services_config = {
 }
 
 
-@app.get("/services/approval-keys", status_code=200, response_model=ServiceKeysResponse, tags=["Service Management"])
+@app.get(
+    "/services/approval-keys",
+    status_code=200,
+    response_model=ServiceKeysResponse,
+    tags=["Service Management"],
+)
 def service_names():
     """
     Get list of available service approval keys.
-    
+
     Returns the list of valid approval keys that can be used for
     service registration.
-    
+
     Returns:
         ServiceKeysResponse: List of available approval keys
     """
     return {"approval_keys": list(services_config.keys())}
 
 
-@app.post("/services/register", status_code=200, response_model=ServiceRegistrationResponse, tags=["Service Management"])
+@app.post(
+    "/services/register",
+    status_code=200,
+    response_model=ServiceRegistrationResponse,
+    tags=["Service Management"],
+)
 def service_registration(request: ServiceRegistrationRequest):
     """
     Register a user for a specific CyVerse service.
-    
+
     This endpoint handles service-specific user registration by:
     - Adding users to required LDAP groups
     - Setting up iRODS paths and permissions
     - Adding users to mailing lists
     - Executing custom actions (like setting VICE job limits)
-    
+
     Available services:
     - COGE: Sets up coge_data iRODS path
     - DISCOVERY_ENVIRONMENT: Adds to de-preview-access group and mailing lists
     - SCI_APPS: Sets up sci_data iRODS path with maizecode user
     - VICE: Sets concurrent job limits via custom action
-    
+
     Args:
         request: Service registration request containing user info and approval key
-        
+
     Returns:
         ServiceRegistrationResponse: Details of what was configured for the user
-        
+
     Raises:
         HTTPException: If approval key is invalid or user information is missing
     """
