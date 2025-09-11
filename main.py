@@ -10,6 +10,7 @@ import mailman
 import portal_datastore
 import portal_ldap
 import terrain
+import email_service
 
 app = FastAPI(
     title="Portal Conductor API",
@@ -83,6 +84,7 @@ terrain_api = terrain.Terrain(
     api_url=terrain_url, username=terrain_user, password=terrain_password
 )
 email_api = mailman.Mailman(api_url=mailmain_url, password=mailman_password)
+smtp_service = email_service.EmailService()
 
 
 class PasswordChangeRequest(BaseModel):
@@ -124,6 +126,20 @@ class ServiceRegistrationResponse(BaseModel):
     irods_user: str | None = None
     mailing_list: list[str] | None = None
     custom_action: str | None = None
+
+
+class EmailRequest(BaseModel):
+    to: str | list[str]
+    subject: str
+    text_body: str | None = None
+    html_body: str | None = None
+    from_email: str | None = None
+    bcc: str | list[str] | None = None
+
+
+class EmailResponse(BaseModel):
+    success: bool
+    message: str
 
 
 @app.get("/", status_code=200, tags=["Health"])
@@ -427,3 +443,50 @@ def service_registration(request: ServiceRegistrationRequest):
         retval["custom_action"] = "completed"
 
     return retval
+
+
+@app.post(
+    "/emails/send",
+    status_code=200,
+    response_model=EmailResponse,
+    tags=["Email Management"],
+)
+def send_email(request: EmailRequest):
+    """
+    Send an email via SMTP.
+
+    This endpoint provides email sending functionality to replace direct
+    sendmail usage in the portal. It supports both text and HTML email
+    bodies, BCC recipients, and configurable sender addresses.
+
+    Args:
+        request: Email request containing recipient(s), subject, body, and optional fields
+
+    Returns:
+        EmailResponse: Success status and message
+
+    Raises:
+        HTTPException: If email sending fails or required fields are missing
+    """
+    if not request.text_body and not request.html_body:
+        raise HTTPException(
+            status_code=400,
+            detail="Either text_body or html_body must be provided"
+        )
+    
+    success = smtp_service.send_email(
+        to=request.to,
+        subject=request.subject,
+        text_body=request.text_body,
+        html_body=request.html_body,
+        from_email=request.from_email,
+        bcc=request.bcc,
+    )
+    
+    if success:
+        return {"success": True, "message": "Email sent successfully"}
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send email"
+        )
