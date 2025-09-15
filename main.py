@@ -6,11 +6,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+import email_service
 import mailman
 import portal_datastore
 import portal_ldap
 import terrain
-import email_service
 
 app = FastAPI(
     title="Portal Conductor API",
@@ -173,26 +173,65 @@ def add_user(user: portal_ldap.CreateUserRequest):
     Raises:
         HTTPException: If user creation fails in LDAP or data store
     """
-    ldap_api.create_user(user)
-    ldap_api.change_password(user.username, user.password)
-    ldap_api.add_user_to_group(user.username, ldap_everyone_group)
-    ldap_api.add_user_to_group(user.username, ldap_community_group)
-    ds_api.create_user(user.username)
-    ds_api.change_password(user.username, user.password)
-    home_dir = ds_api.user_home(user.username)
-    ipcservices_perm = portal_datastore.PathPermission(
-        username=ipcservices_user,
-        permission="own",
-        path=home_dir,
-    )
-    rodsadmin_perm = portal_datastore.PathPermission(
-        username=ds_admin_user,
-        permission="own",
-        path=home_dir,
-    )
-    ds_api.chmod(ipcservices_perm)
-    ds_api.chmod(rodsadmin_perm)
-    return {"user": user.username}
+    try:
+        print(f"Creating LDAP user: {user.username}", file=sys.stderr)
+        ldap_api.create_user(user)
+
+        print(f"Setting LDAP password for: {user.username}", file=sys.stderr)
+        ldap_api.change_password(user.username, user.password)
+
+        print(
+            f"Adding user {user.username} to everyone group: {ldap_everyone_group}",
+            file=sys.stderr,
+        )
+        ldap_api.add_user_to_group(user.username, ldap_everyone_group)
+
+        print(
+            f"Adding user {user.username} to community group: {ldap_community_group}",
+            file=sys.stderr,
+        )
+        ldap_api.add_user_to_group(user.username, ldap_community_group)
+
+        print(f"Creating data store user: {user.username}", file=sys.stderr)
+        # Check if datastore service is reachable before user creation
+        ds_api.health_check()
+        ds_api.create_user(user.username)
+
+        print(f"Setting data store password for: {user.username}", file=sys.stderr)
+        ds_api.change_password(user.username, user.password)
+
+        print(f"Getting home directory for: {user.username}", file=sys.stderr)
+        home_dir = ds_api.user_home(user.username)
+
+        print(f"Setting ipcservices permissions for: {home_dir}", file=sys.stderr)
+        ipcservices_perm = portal_datastore.PathPermission(
+            username=ipcservices_user,
+            permission="own",
+            path=home_dir,
+        )
+        ds_api.chmod(ipcservices_perm)
+
+        print(f"Setting rodsadmin permissions for: {home_dir}", file=sys.stderr)
+        rodsadmin_perm = portal_datastore.PathPermission(
+            username=ds_admin_user,
+            permission="own",
+            path=home_dir,
+        )
+        ds_api.chmod(rodsadmin_perm)
+
+        print(
+            f"User creation completed successfully for: {user.username}",
+            file=sys.stderr,
+        )
+        return {"user": user.username}
+
+    except Exception as e:
+        print(f"User creation failed for {user.username}: {str(e)}", file=sys.stderr)
+        print(f"Exception type: {type(e).__name__}", file=sys.stderr)
+        import traceback
+
+        print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
+        raise HTTPException(status_code=500, detail=f"User creation failed: {str(e)}")
 
 
 @app.post(
@@ -470,10 +509,9 @@ def send_email(request: EmailRequest):
     """
     if not request.text_body and not request.html_body:
         raise HTTPException(
-            status_code=400,
-            detail="Either text_body or html_body must be provided"
+            status_code=400, detail="Either text_body or html_body must be provided"
         )
-    
+
     success = smtp_service.send_email(
         to=request.to,
         subject=request.subject,
@@ -482,11 +520,8 @@ def send_email(request: EmailRequest):
         from_email=request.from_email,
         bcc=request.bcc,
     )
-    
+
     if success:
         return {"success": True, "message": "Email sent successfully"}
     else:
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to send email"
-        )
+        raise HTTPException(status_code=500, detail="Failed to send email")

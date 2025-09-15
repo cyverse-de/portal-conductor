@@ -27,6 +27,7 @@ spec:
       containers:
         - name: portal-conductor
           image: harbor.cyverse.org/de/portal-conductor
+          imagePullPolicy: Always
           env:
             - name: IRODS_HOST
               valueFrom:

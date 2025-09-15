@@ -19,9 +19,10 @@ class Terrain(object):
     def get_keycloak_token(self):
         auth_string = f"Basic {self.username}:{self.password}"
         auth_string = base64.b64encode(auth_string.encode("utf-8")).decode("utf-8")
-
+        u = self.api_url("token", "keycloak")
+        print(f"Requesting Keycloak token from: {u}")
         r = httpx.get(
-            self.api_url("token", "keycloak"),
+            u,
             headers={"Authorization": auth_string},
         )
         r.raise_for_status()
@@ -65,3 +66,14 @@ class Terrain(object):
         )
         r.raise_for_status()
         return r.json()
+
+    def bootstrap_user(self, username: str, password: str):
+        """Bootstrap a specific user in the Discovery Environment"""
+        # Create a temporary Terrain client with the user's credentials
+        user_terrain = Terrain(self.base_url, username, password)
+
+        # Get a token for this specific user
+        user_token = user_terrain.get_keycloak_token()
+
+        # Call bootstrap with the user's token
+        return user_terrain.bootstrap(user_token)
