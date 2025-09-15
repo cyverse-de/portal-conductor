@@ -286,11 +286,17 @@ def delete_user(username: str):
     Raises:
         HTTPException: If user deletion fails
     """
+    print(f"Deleting LDAP user: {username}")
     user_groups = ldap_api.get_user_groups(username)
+    print(f"User {username} is in groups: {user_groups}", file=sys.stderr)
     for ug in user_groups:
         group_name = ug[1]["cn"][0]
+        print(f"Removing user {username} from group {group_name}", file=sys.stderr)
         ldap_api.remove_user_from_group(username, group_name)
+        print(f"Removed user {username} from group {group_name}", file=sys.stderr)
+    print(f"Deleting user {username} from LDAP", file=sys.stderr)
     ldap_api.delete_user(username)
+    print(f"Deleted LDAP user: {username}", file=sys.stderr)
     return {"user": username}
 
 
