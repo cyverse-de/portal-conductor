@@ -100,32 +100,22 @@ class EmailListResponse(BaseModel):
     email: str
 
 
-class ServiceKeysResponse(BaseModel):
-    approval_keys: list[str]
+class DatastoreServiceRequest(BaseModel):
+    irods_path: str
+    irods_user: str | None = None
 
 
-class ServiceRegistrationUser(BaseModel):
-    username: str
+class MailingListMemberRequest(BaseModel):
     email: str
 
 
-class ServiceRegistrationService(BaseModel):
-    approval_key: str
+class JobLimitsRequest(BaseModel):
+    limit: int
 
 
-class ServiceRegistrationRequest(BaseModel):
-    user: ServiceRegistrationUser
-    service: ServiceRegistrationService
-
-
-class ServiceRegistrationResponse(BaseModel):
-    user: str
-    service: str
-    ldap_group: str | None = None
-    irods_path: str | None = None
-    irods_user: str | None = None
-    mailing_list: list[str] | None = None
-    custom_action: str | None = None
+class GenericResponse(BaseModel):
+    success: bool
+    message: str
 
 
 class EmailRequest(BaseModel):
@@ -356,138 +346,263 @@ def add_addr_to_list(list_name: str, addr: str):
     return {"list": list_name, "email": addr}
 
 
-def set_vice_job_limit(request: ServiceRegistrationRequest):
-    token = terrain_api.get_keycloak_token()
-    terrain_api.set_concurrent_job_limits(
-        token=token, username=request.user.username, limit="2"
-    )
+# Legacy function removed - VICE job limits now handled via granular endpoint
 
 
-services_config = {
-    "COGE": {
-        "irods_path": "coge_data",
-    },
-    "DISCOVERY_ENVIRONMENT": {
-        "ldap_group": "de-preview-access",
-        "mailing_list": ["de-users", "datastore-users"],
-    },
-    "SCI_APPS": {
-        "irods_path": "sci_data",
-        "irods_user": "maizecode",
-    },
-    "VICE": {
-        "custom_action": set_vice_job_limit,
-    },
-}
+# Legacy generic service registration endpoint removed
+# Service registration is now handled in portal2 with granular portal-conductor APIs
 
 
-@app.get(
-    "/services/approval-keys",
-    status_code=200,
-    response_model=ServiceKeysResponse,
-    tags=["Service Management"],
-)
-def service_names():
-    """
-    Get list of available service approval keys.
-
-    Returns the list of valid approval keys that can be used for
-    service registration.
-
-    Returns:
-        ServiceKeysResponse: List of available approval keys
-    """
-    return {"approval_keys": list(services_config.keys())}
+# Granular service registration endpoints for improved architecture
 
 
 @app.post(
-    "/services/register",
+    "/ldap/users/{username}/groups/{groupname}",
     status_code=200,
-    response_model=ServiceRegistrationResponse,
-    tags=["Service Management"],
+    response_model=GenericResponse,
+    tags=["LDAP Management"],
 )
-def service_registration(request: ServiceRegistrationRequest):
+def add_user_to_ldap_group(username: str, groupname: str):
     """
-    Register a user for a specific CyVerse service.
-
-    This endpoint handles service-specific user registration by:
-    - Adding users to required LDAP groups
-    - Setting up iRODS paths and permissions
-    - Adding users to mailing lists
-    - Executing custom actions (like setting VICE job limits)
-
-    Available services:
-    - COGE: Sets up coge_data iRODS path
-    - DISCOVERY_ENVIRONMENT: Adds to de-preview-access group and mailing lists
-    - SCI_APPS: Sets up sci_data iRODS path with maizecode user
-    - VICE: Sets concurrent job limits via custom action
+    Add a user to an LDAP group.
 
     Args:
-        request: Service registration request containing user info and approval key
+        username: Username to add to group
+        groupname: LDAP group name
 
     Returns:
-        ServiceRegistrationResponse: Details of what was configured for the user
+        GenericResponse: Success status and message
 
     Raises:
-        HTTPException: If approval key is invalid or user information is missing
+        HTTPException: If operation fails
     """
-    retval = {}
-
-    approval_key = request.service.approval_key
-    if approval_key not in services_config:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid service approval key: {approval_key}",
-        )
-
-    user = request.user
-    if user is None or user.username is None:
-        raise HTTPException(
-            status_code=400,
-            detail="User information is required for service registration.",
-        )
-
-    svc_cfg = services_config[approval_key]
-
-    retval["user"] = user.username
-    retval["service"] = approval_key
-
-    if "ldap_group" in svc_cfg:
+    try:
+        # Check if user is already in group
         user_groups = list(
-            map(lambda g: g[1]["cn"][0], ldap_api.get_user_groups(user.username))
+            map(lambda g: g[1]["cn"][0], ldap_api.get_user_groups(username))
         )
-        if svc_cfg["ldap_group"] not in user_groups:
-            ldap_api.add_user_to_group(user.username, svc_cfg["ldap_group"])
-        retval["ldap_group"] = svc_cfg["ldap_group"]
+        if groupname not in user_groups:
+            ldap_api.add_user_to_group(username, groupname)
+            return {
+                "success": True,
+                "message": f"User {username} added to group {groupname}",
+            }
+        else:
+            return {
+                "success": True,
+                "message": f"User {username} already in group {groupname}",
+            }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to add user to LDAP group: {str(e)}"
+        )
 
-    if "irods_path" in svc_cfg:
+
+@app.get(
+    "/ldap/users/{username}/groups",
+    status_code=200,
+    response_model=list[str],
+    tags=["LDAP Management"],
+)
+def get_user_ldap_groups(username: str):
+    """
+    Get all LDAP groups for a user.
+
+    Args:
+        username: Username to lookup
+
+    Returns:
+        list[str]: List of group names the user belongs to
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    try:
+        user_groups = list(
+            map(lambda g: g[1]["cn"][0], ldap_api.get_user_groups(username))
+        )
+        return user_groups
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get user LDAP groups: {str(e)}"
+        )
+
+
+@app.delete(
+    "/ldap/users/{username}/groups/{groupname}",
+    status_code=200,
+    response_model=GenericResponse,
+    tags=["LDAP Management"],
+)
+def remove_user_from_ldap_group(username: str, groupname: str):
+    """
+    Remove a user from an LDAP group.
+
+    Args:
+        username: Username to remove from group
+        groupname: LDAP group name
+
+    Returns:
+        GenericResponse: Success status and message
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    try:
+        ldap_api.remove_user_from_group(username, groupname)
+        return {
+            "success": True,
+            "message": f"User {username} removed from group {groupname}",
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to remove user from LDAP group: {str(e)}"
+        )
+
+
+@app.post(
+    "/datastore/users/{username}/services",
+    status_code=200,
+    response_model=GenericResponse,
+    tags=["DataStore Management"],
+)
+def register_datastore_service(username: str, request: DatastoreServiceRequest):
+    """
+    Register a user for datastore service access.
+
+    Args:
+        username: Username to register
+        request: Service registration details
+
+    Returns:
+        GenericResponse: Success status and message
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    try:
         ds_api.register_service(
-            username=user.username,
-            irods_path=svc_cfg["irods_path"],
-            irods_user=svc_cfg["irods_user"] if "irods_user" in svc_cfg else None,
+            username=username,
+            irods_path=request.irods_path,
+            irods_user=request.irods_user,
         )
-        retval["irods_path"] = svc_cfg["irods_path"]
-        if "irods_user" in svc_cfg:
-            retval["irods_user"] = svc_cfg["irods_user"]
+        return {
+            "success": True,
+            "message": f"User {username} registered for datastore service {request.irods_path}",
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to register datastore service: {str(e)}"
+        )
 
-    if "mailing_list" in svc_cfg and mailman_enabled:
-        mailing_lists = svc_cfg["mailing_list"]
-        if isinstance(mailing_lists, str):
-            mailing_lists = [mailing_lists]
-        for ml in mailing_lists:
-            email_api.add_member(ml, user.email)
-        retval["mailing_list"] = mailing_lists
 
-    if "custom_action" in svc_cfg:
-        custom_actions = svc_cfg["custom_action"]
-        if not isinstance(custom_actions, list):
-            custom_actions = [custom_actions]
-        for ca in custom_actions:
-            if callable(ca):
-                ca(request)
-        retval["custom_action"] = "completed"
+@app.post(
+    "/mailinglists/{listname}/members",
+    status_code=200,
+    response_model=GenericResponse,
+    tags=["Mailing List Management"],
+)
+def add_to_mailing_list(listname: str, request: MailingListMemberRequest):
+    """
+    Add a user to a mailing list.
 
-    return retval
+    Args:
+        listname: Mailing list name
+        request: Member details
+
+    Returns:
+        GenericResponse: Success status and message
+
+    Raises:
+        HTTPException: If operation fails or mailman not enabled
+    """
+    if not mailman_enabled:
+        raise HTTPException(
+            status_code=503, detail="Mailing list functionality is not enabled"
+        )
+
+    try:
+        email_api.add_member(listname, request.email)
+        return {
+            "success": True,
+            "message": f"Added {request.email} to mailing list {listname}",
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to add user to mailing list: {str(e)}"
+        )
+
+
+@app.delete(
+    "/mailinglists/{listname}/members/{email}",
+    status_code=200,
+    response_model=GenericResponse,
+    tags=["Mailing List Management"],
+)
+def remove_from_mailing_list(listname: str, email: str):
+    """
+    Remove a user from a mailing list.
+
+    Args:
+        listname: Mailing list name
+        email: Email address to remove
+
+    Returns:
+        GenericResponse: Success status and message
+
+    Raises:
+        HTTPException: If operation fails or mailman not enabled
+    """
+    if not mailman_enabled:
+        raise HTTPException(
+            status_code=503, detail="Mailing list functionality is not enabled"
+        )
+
+    try:
+        email_api.remove_member(listname, email)
+        return {
+            "success": True,
+            "message": f"Removed {email} from mailing list {listname}",
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to remove user from mailing list: {str(e)}"
+        )
+
+
+@app.post(
+    "/terrain/users/{username}/job-limits",
+    status_code=200,
+    response_model=GenericResponse,
+    tags=["Terrain Management"],
+)
+def set_job_limits(username: str, request: JobLimitsRequest):
+    """
+    Set VICE job limits for a user via Terrain.
+
+    Args:
+        username: Username to set limits for
+        request: Job limit details
+
+    Returns:
+        GenericResponse: Success status and message
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    try:
+        token = terrain_api.get_keycloak_token()
+        terrain_api.set_concurrent_job_limits(
+            token=token, username=username, limit=request.limit
+        )
+        return {
+            "success": True,
+            "message": f"Set job limit {request.limit} for user {username}",
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to set job limits: {str(e)}"
+        )
 
 
 @app.post(

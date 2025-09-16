@@ -17,8 +17,10 @@ class Terrain(object):
         return urljoin(self.base_url, part_path)
 
     def get_keycloak_token(self):
-        auth_string = f"Basic {self.username}:{self.password}"
-        auth_string = base64.b64encode(auth_string.encode("utf-8")).decode("utf-8")
+        auth_string = base64.b64encode(
+            f"{self.username}:{self.password}".encode("utf-8")
+        ).decode("utf-8")
+        auth_string = f"Basic {auth_string}"
         u = self.api_url("token", "keycloak")
         print(f"Requesting Keycloak token from: {u}")
         r = httpx.get(
@@ -28,7 +30,7 @@ class Terrain(object):
         r.raise_for_status()
         return r.json()["access_token"]
 
-    def set_concurrent_job_limits(self, token: str, username: str, limit: str):
+    def set_concurrent_job_limits(self, token: str, username: str, limit: int):
         r = httpx.put(
             self.api_url("admin", "settings", "concurrent-job-limits", username),
             headers={
