@@ -346,13 +346,6 @@ def add_addr_to_list(list_name: str, addr: str):
     return {"list": list_name, "email": addr}
 
 
-# Legacy function removed - VICE job limits now handled via granular endpoint
-
-
-# Legacy generic service registration endpoint removed
-# Service registration is now handled in portal2 with granular portal-conductor APIs
-
-
 # Granular service registration endpoints for improved architecture
 
 
