@@ -1,0 +1,29 @@
+{
+  "ldap": {
+    "url": "ldap://your-ldap-server:389",
+    "user": "cn=admin,dc=example,dc=com",
+    "password": "your-ldap-password",
+    "base_dn": "dc=example,dc=com",
+    "community_group": "community",
+    "everyone_group": "everyone"
+  },
+  "irods": {
+    "host": "your-irods-server",
+    "port": "1247",
+    "user": "your-irods-admin-user",
+    "password": "your-irods-password",
+    "zone": "your-irods-zone",
+    "admin_user": "rodsadmin",
+    "ipcservices_user": "ipcservices"
+  },
+  "terrain": {
+    "url": "http://your-terrain-server/",
+    "user": "your-terrain-user",
+    "password": "your-terrain-password"
+  },
+  "mailman": {
+    "enabled": false,
+    "url": "http://your-mailman-server/",
+    "password": "your-mailman-password"
+  }
+}

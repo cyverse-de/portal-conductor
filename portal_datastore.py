@@ -1,9 +1,11 @@
-import functools
 import os.path
 import sys
-from urllib.parse import urljoin
 
-import httpx
+from irods.access import iRODSAccess
+from irods.exception import UserDoesNotExist
+from irods.path import iRODSPath
+from irods.session import iRODSSession
+from irods.user import iRODSUser
 from pydantic import BaseModel
 
 
@@ -14,73 +16,65 @@ class PathPermission(BaseModel):
 
 
 class DataStore(object):
-    def __init__(self, api_url: str):
-        self.base_url = api_url
+    _user_type = "rodsuser"
 
-    def _url_join(self, parts: list[str]) -> str:
-        part_path = functools.reduce(os.path.join, parts, "/")
-        return urljoin(self.base_url, part_path)
-
-    def _log_http_error(self, error: httpx.HTTPStatusError, operation: str, context: str = "") -> None:
-        """Log HTTPStatusError with detailed information including response body."""
-        error_detail = f"DataStore {operation} failed{f' {context}' if context else ''}: {error.response.status_code} {error.response.reason_phrase}"
-        try:
-            error_body = error.response.text
-            if error_body:
-                error_detail += f" - Response: {error_body}"
-        except:
-            pass
-        print(f"DataStore API Error: {error_detail}", file=sys.stderr)
+    def __init__(self, host: str, port: str, user: str, password: str, zone: str):
+        self.session = iRODSSession(
+            host=host, port=port, user=user, password=password, zone=zone
+        )
+        self.session.connection_timeout = None
+        self.host = host
+        self.port = port
+        self.user = user
+        self.zone = zone
 
     def health_check(self) -> bool:
         """
         Check if the datastore service is reachable and healthy.
-        
+
         Returns:
             bool: True if the service is healthy, False otherwise
         """
         try:
-            print(f"Checking datastore service health at: {self.base_url}", file=sys.stderr)
-            response = httpx.get(self.base_url.rstrip('/'), timeout=5.0)
-            print(f"Datastore health check: {response.status_code}", file=sys.stderr)
-            return response.status_code < 400
+            print(f"Checking datastore service health at: {self.host}:{self.port}", file=sys.stderr)
+            # Try a simple operation to check connectivity
+            self.session.server_version
+            print("Datastore health check: OK", file=sys.stderr)
+            return True
         except Exception as health_error:
             print(f"Datastore health check failed: {type(health_error).__name__}: {health_error}", file=sys.stderr)
             return False
 
     def list_available_permissions(self) -> list[str]:
-        r = httpx.get(self._url_join(["permissions", "available"]))
-        r.raise_for_status()
-        body = r.json()
-        return body["permissions"]
+        return list(self.session.available_permissions.keys())
 
     def path_exists(self, path: str) -> bool:
-        r = httpx.get(self._url_join(["path", "exists"]), params={"path": path})
-        r.raise_for_status()
-        body = r.json()
-        return body["exists"]
+        fixed_path = iRODSPath(path)
+        return self.session.data_objects.exists(
+            fixed_path
+        ) or self.session.collections.exists(fixed_path)
 
-    def path_permissions(self, path: str) -> list[object]:
-        r = httpx.get(self._url_join(["path", "permissions"]), params={"path": path})
-        r.raise_for_status()
-        body = r.json()
-        return body["permissions"]
+    def path_permissions(self, path: str) -> list[iRODSAccess]:
+        clean_path = iRODSPath(path)
+
+        obj = None
+        if self.session.data_objects.exists(clean_path):
+            obj = self.session.data_objects.get(clean_path)
+        else:
+            obj = self.session.collections.get(clean_path)
+
+        return self.session.acls.get(obj)
 
     def user_exists(self, username: str) -> bool:
-        r = httpx.get(self._url_join(["users", username, "exists"]))
-        r.raise_for_status()
-        body = r.json()
-        return body["exists"]
-
-    def create_user(self, username: str):
-        url = self._url_join(["users", username])
         try:
-            r = httpx.post(url)
-            r.raise_for_status()
-            return r.json()
-        except httpx.HTTPStatusError as e:
-            self._log_http_error(e, "create_user", f"for '{username}'")
-            raise
+            user = self.session.users.get(username, self.zone)
+            return user is not None
+        except UserDoesNotExist:
+            return False
+
+    def create_user(self, username: str) -> iRODSUser:
+        try:
+            return self.session.users.create(username, DataStore._user_type)
         except Exception as e:
             print(
                 f"DataStore connection error for create_user('{username}'): {type(e).__name__}: {e}",
@@ -88,15 +82,9 @@ class DataStore(object):
             )
             raise
 
-    def user_home(self, username: str):
-        url = self._url_join(["users", username, "home"])
+    def user_home(self, username: str) -> str:
         try:
-            r = httpx.get(url)
-            r.raise_for_status()
-            return r.json()["home"]
-        except httpx.HTTPStatusError as e:
-            self._log_http_error(e, "user_home", f"for '{username}'")
-            raise
+            return str(iRODSPath(f"/{self.zone}/home/{username}"))
         except Exception as e:
             print(
                 f"DataStore connection error for user_home('{username}'): {type(e).__name__}: {e}",
@@ -104,25 +92,17 @@ class DataStore(object):
             )
             raise
 
-    def delete_user(self, username: str):
-        r = httpx.delete(self._url_join(["users", username]))
-        r.raise_for_status()
-        return r.json()
+    def delete_user(self, username: str) -> None:
+        self.session.users.get(username, self.zone).remove()
 
-    def delete_home(self, username: str):
-        r = httpx.delete(self._url_join(["users", username, "home"]))
-        r.raise_for_status()
-        return r.json()
+    def delete_home(self, username: str) -> None:
+        homedir = self.user_home(username)
+        if self.session.collections.exists(homedir):
+            self.session.collections.remove(homedir, force=True, recurse=True)
 
-    def change_password(self, username: str, new_password):
-        url = self._url_join(["users", username, "password"])
+    def change_password(self, username: str, new_password: str) -> None:
         try:
-            r = httpx.post(url, json={"password": new_password})
-            r.raise_for_status()
-            return r.json()
-        except httpx.HTTPStatusError as e:
-            self._log_http_error(e, "change_password", f"for '{username}'")
-            raise
+            self.session.users.modify(username, "password", new_password)
         except Exception as e:
             print(
                 f"DataStore connection error for change_password('{username}'): {type(e).__name__}: {e}",
@@ -130,15 +110,10 @@ class DataStore(object):
             )
             raise
 
-    def chmod(self, perm: PathPermission):
-        url = self._url_join(["path", "chmod"])
+    def chmod(self, perm: PathPermission) -> None:
         try:
-            r = httpx.post(url, json=perm.model_dump())
-            r.raise_for_status()
-            return r.json()
-        except httpx.HTTPStatusError as e:
-            self._log_http_error(e, "chmod", f"for '{perm.username}' on '{perm.path}'")
-            raise
+            access = iRODSAccess(perm.permission, iRODSPath(perm.path), perm.username)
+            self.session.acls.set(access)
         except Exception as e:
             print(
                 f"DataStore connection error for chmod('{perm.path}'): {type(e).__name__}: {e}",
@@ -149,15 +124,78 @@ class DataStore(object):
     def register_service(
         self, username: str, irods_path: str, irods_user: str | None = None
     ):
-        body = {
-            "username": username,
-            "irods_path": irods_path,
-        }
+        # Ensure user exists (create if necessary)
+        try:
+            self.ensure_user_exists(username)
+            print(f"User {username} is ready for service registration", file=sys.stderr)
+        except Exception as e:
+            print(f"Failed to ensure user {username} exists: {str(e)}", file=sys.stderr)
+            raise Exception(f"Failed to prepare user {username}: {str(e)}")
+
+        home_dir = self.user_home(username)
+
+        full_path = os.path.join(home_dir, irods_path)
+        if not self.path_exists(full_path):
+            self.session.collections.create(full_path)
+
+        # Set permissions idempotently - check current permissions first
+        current_perms = self.path_permissions(full_path)
+
+        # Set inherit permission if not already set
+        inherit_set = any(perm.user_name == "" and perm.access_name == "inherit" for perm in current_perms)
+        if not inherit_set:
+            inherit_perm = PathPermission(username="", permission="inherit", path=full_path)
+            self.chmod(inherit_perm)
+
+        # Set owner permission for username if not already set
+        user_owns = any(perm.user_name == username and perm.access_name == "own" for perm in current_perms)
+        if not user_owns:
+            user_perm = PathPermission(username=username, permission="own", path=full_path)
+            self.chmod(user_perm)
+
+        # Set owner permission for irods_user if specified and not already set
         if irods_user is not None:
-            body["irods_user"] = irods_user
-        r = httpx.post(
-            self._url_join(["services", "register"]),
-            json=body,
-        )
-        r.raise_for_status()
-        return r.json()
+            irods_user_owns = any(perm.user_name == irods_user and perm.access_name == "own" for perm in current_perms)
+            if not irods_user_owns:
+                irods_user_perm = PathPermission(username=irods_user, permission="own", path=full_path)
+                self.chmod(irods_user_perm)
+
+        return {
+            "user": username,
+            "irods_path": full_path,
+            "irods_user": irods_user,
+        }
+
+    def get_user(self, username: str) -> iRODSUser:
+        return self.session.users.get(username, self.zone)
+
+    def ensure_user_exists(self, username: str) -> iRODSUser:
+        """
+        Ensure a user exists in iRODS, creating them and their home directory if necessary.
+
+        Args:
+            username: The username to ensure exists
+
+        Returns:
+            iRODSUser: The user object (either existing or newly created)
+
+        Raises:
+            Exception: If user or home directory creation fails
+        """
+        # Check if user already exists
+        if self.user_exists(username):
+            return self.get_user(username)
+
+        # Create the user
+        user = self.create_user(username)
+
+        # Ensure home directory exists
+        home_dir = self.user_home(username)
+        if not self.path_exists(home_dir):
+            # Create home directory
+            self.session.collections.create(home_dir)
+            # Set ownership of home directory to the user
+            home_perm = PathPermission(username=username, permission="own", path=home_dir)
+            self.chmod(home_perm)
+
+        return user

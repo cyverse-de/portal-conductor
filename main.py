@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -7,10 +8,64 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import email_service
+import kinds
 import mailman
 import portal_datastore
 import portal_ldap
 import terrain
+
+
+def load_config():
+    """Load configuration from JSON file or environment variables as fallback."""
+    config_file = os.environ.get("PORTAL_CONDUCTOR_CONFIG", "config.json")
+
+    # Try to load from JSON file first
+    if os.path.exists(config_file):
+        try:
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+                print(f"Loaded configuration from {config_file}", file=sys.stderr)
+                return config
+        except Exception as e:
+            print(f"Failed to load config from {config_file}: {e}", file=sys.stderr)
+            print("Falling back to environment variables", file=sys.stderr)
+
+    # Fallback to environment variables
+    config = {
+        "ldap": {
+            "url": os.environ.get("LDAP_URL", ""),
+            "user": os.environ.get("LDAP_USER", ""),
+            "password": os.environ.get("LDAP_PASSWORD", ""),
+            "base_dn": os.environ.get("LDAP_BASE_DN", ""),
+            "community_group": os.environ.get("LDAP_COMMUNITY_GROUP", "community"),
+            "everyone_group": os.environ.get("LDAP_EVERYONE_GROUP", "")
+        },
+        "irods": {
+            "host": os.environ.get("IRODS_HOST", ""),
+            "port": os.environ.get("IRODS_PORT", ""),
+            "user": os.environ.get("IRODS_USER", ""),
+            "password": os.environ.get("IRODS_PASSWORD", ""),
+            "zone": os.environ.get("IRODS_ZONE", ""),
+            "admin_user": os.environ.get("DS_ADMIN_USER", "rodsadmin"),
+            "ipcservices_user": os.environ.get("IPCSERVICES_USER", "ipcservices")
+        },
+        "terrain": {
+            "url": os.environ.get("TERRAIN_URL", "http://terrain/"),
+            "user": os.environ.get("TERRAIN_USER", ""),
+            "password": os.environ.get("TERRAIN_PASSWORD", "")
+        },
+        "mailman": {
+            "enabled": os.environ.get("MAILMAN_ENABLED", "false").lower() in ["1", "true", "yes"],
+            "url": os.environ.get("MAILMAN_URL", ""),
+            "password": os.environ.get("MAILMAN_PASSWORD", "")
+        }
+    }
+
+    return config
+
+
+# Load configuration
+config = load_config()
 
 app = FastAPI(
     title="Portal Conductor API",
@@ -24,7 +79,7 @@ app = FastAPI(
 
 
 @app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+async def http_exception_handler(_: Request, exc: StarletteHTTPException):
     print(exc, file=sys.stderr)
     return JSONResponse(content={"detail": exc.detail}, status_code=exc.status_code)
 
@@ -38,48 +93,65 @@ async def exception_handling_middleware(request: Request, call_next):
         return JSONResponse(content=str(e), status_code=500)
 
 
-portal_ldap_url = os.environ.get("PORTAL_LDAP_URL") or "http://portal-ldap/"
-portal_datastore_url = (
-    os.environ.get("PORTAL_DATASTORE_URL") or "http://portal-datastore/"
-)
-ldap_community_group = os.environ.get("LDAP_COMMUNITY_GROUP") or "community"
-ipcservices_user = os.environ.get("IPCSERVICES_USER") or "ipcservices"
-ds_admin_user = os.environ.get("DS_ADMIN_USER") or "rodsadmin"
-terrain_url = os.environ.get("TERRAIN_URL") or "http://terrain/"
+# Validate required configuration
+def validate_config(config):
+    """Validate that all required configuration values are present."""
+    required_fields = [
+        ("ldap.url", config["ldap"]["url"]),
+        ("ldap.user", config["ldap"]["user"]),
+        ("ldap.password", config["ldap"]["password"]),
+        ("ldap.base_dn", config["ldap"]["base_dn"]),
+        ("ldap.everyone_group", config["ldap"]["everyone_group"]),
+        ("irods.host", config["irods"]["host"]),
+        ("irods.port", config["irods"]["port"]),
+        ("irods.user", config["irods"]["user"]),
+        ("irods.password", config["irods"]["password"]),
+        ("irods.zone", config["irods"]["zone"]),
+        ("terrain.user", config["terrain"]["user"]),
+        ("terrain.password", config["terrain"]["password"]),
+    ]
 
-terrain_user = os.environ.get("TERRAIN_USER") or ""
-if terrain_user == "":
-    print("TERRAIN_USER must be set", file=sys.stderr)
-    sys.exit(1)
+    if config["mailman"]["enabled"]:
+        required_fields.extend([
+            ("mailman.url", config["mailman"]["url"]),
+            ("mailman.password", config["mailman"]["password"]),
+        ])
 
-terrain_password = os.environ.get("TERRAIN_PASSWORD") or ""
-if terrain_password == "":
-    print("TERRAIN_PASSWORD must be set", file=sys.stderr)
-    sys.exit(1)
+    for field_name, field_value in required_fields:
+        if not field_value:
+            print(f"Required configuration field '{field_name}' is not set", file=sys.stderr)
+            sys.exit(1)
 
-ldap_everyone_group = os.environ.get("LDAP_EVERYONE_GROUP") or ""
-if ldap_everyone_group == "":
-    print("LDAP_EVERYONE_GROUP must be set", file=sys.stderr)
-    sys.exit(1)
+    if not config["mailman"]["enabled"]:
+        print("MAILMAN_ENABLED is not set to true, mailman integration disabled")
 
-mailman_enabled = os.environ.get("MAILMAN_ENABLED") or "false"
-mailman_enabled = mailman_enabled.lower() in ["1", "true", "yes"]
-if not mailman_enabled:
-    print("MAILMAN_ENABLED is not set to true, mailman integration disabled")
+validate_config(config)
 
-mailmain_url = os.environ.get("MAILMAN_URL") or ""
-if mailmain_url == "":
-    print("MAILMAN_URL must be set", file=sys.stderr)
-    sys.exit(1)
+# Extract configuration values for easier access
+ldap_community_group = config["ldap"]["community_group"]
+ldap_everyone_group = config["ldap"]["everyone_group"]
+ipcservices_user = config["irods"]["ipcservices_user"]
+ds_admin_user = config["irods"]["admin_user"]
+terrain_url = config["terrain"]["url"]
+terrain_user = config["terrain"]["user"]
+terrain_password = config["terrain"]["password"]
+mailman_enabled = config["mailman"]["enabled"]
+mailmain_url = config["mailman"]["url"]
+mailman_password = config["mailman"]["password"]
+ldap_url = config["ldap"]["url"]
+ldap_user = config["ldap"]["user"]
+ldap_password = config["ldap"]["password"]
+ldap_base_dn = config["ldap"]["base_dn"]
+irods_host = config["irods"]["host"]
+irods_port = config["irods"]["port"]
+irods_user = config["irods"]["user"]
+irods_password = config["irods"]["password"]
+irods_zone = config["irods"]["zone"]
 
-mailman_password = os.environ.get("MAILMAN_PASSWORD") or ""
-if mailman_password == "":
-    print("MAILMAN_PASSWORD must be set", file=sys.stderr)
-    sys.exit(1)
 
-
-ldap_api = portal_ldap.LDAP(portal_ldap_url)
-ds_api = portal_datastore.DataStore(portal_datastore_url)
+# Initialize direct connections
+ldap_conn = portal_ldap.connect(ldap_url, ldap_user, ldap_password)
+ds_api = portal_datastore.DataStore(irods_host, irods_port, irods_user, irods_password, irods_zone)
 terrain_api = terrain.Terrain(
     api_url=terrain_url, username=terrain_user, password=terrain_password
 )
@@ -143,7 +215,7 @@ def greeting():
 @app.post(
     "/users", status_code=200, response_model=UserResponse, tags=["User Management"]
 )
-def add_user(user: portal_ldap.CreateUserRequest):
+def add_user(user: kinds.CreateUserRequest):
     """
     Create a new user account in the CyVerse platform.
 
@@ -165,22 +237,23 @@ def add_user(user: portal_ldap.CreateUserRequest):
     """
     try:
         print(f"Creating LDAP user: {user.username}", file=sys.stderr)
-        ldap_api.create_user(user)
+        dse = portal_ldap.days_since_epoch()
+        portal_ldap.create_user(ldap_conn, ldap_base_dn, dse, user)
 
         print(f"Setting LDAP password for: {user.username}", file=sys.stderr)
-        ldap_api.change_password(user.username, user.password)
+        portal_ldap.change_password(ldap_conn, ldap_base_dn, user.username, user.password)
 
         print(
             f"Adding user {user.username} to everyone group: {ldap_everyone_group}",
             file=sys.stderr,
         )
-        ldap_api.add_user_to_group(user.username, ldap_everyone_group)
+        portal_ldap.add_user_to_group(ldap_conn, ldap_base_dn, user.username, ldap_everyone_group)
 
         print(
             f"Adding user {user.username} to community group: {ldap_community_group}",
             file=sys.stderr,
         )
-        ldap_api.add_user_to_group(user.username, ldap_community_group)
+        portal_ldap.add_user_to_group(ldap_conn, ldap_base_dn, user.username, ldap_community_group)
 
         print(f"Creating data store user: {user.username}", file=sys.stderr)
         # Check if datastore service is reachable before user creation
@@ -247,8 +320,9 @@ def change_password(username: str, request: PasswordChangeRequest):
     Raises:
         HTTPException: If password change fails in LDAP or data store
     """
-    ldap_api.change_password(username, request.password)
-    ldap_api.shadow_last_change(username)
+    portal_ldap.change_password(ldap_conn, ldap_base_dn, username, request.password)
+    dse = portal_ldap.days_since_epoch()
+    portal_ldap.shadow_last_change(ldap_conn, ldap_base_dn, dse, username)
     ds_api.change_password(username, request.password)
     return {"user": username}
 
@@ -277,15 +351,15 @@ def delete_user(username: str):
         HTTPException: If user deletion fails
     """
     print(f"Deleting LDAP user: {username}")
-    user_groups = ldap_api.get_user_groups(username)
+    user_groups = portal_ldap.get_user_groups(ldap_conn, ldap_base_dn, username)
     print(f"User {username} is in groups: {user_groups}", file=sys.stderr)
     for ug in user_groups:
         group_name = ug[1]["cn"][0]
         print(f"Removing user {username} from group {group_name}", file=sys.stderr)
-        ldap_api.remove_user_from_group(username, group_name)
+        portal_ldap.remove_user_from_group(ldap_conn, ldap_base_dn, username, group_name)
         print(f"Removed user {username} from group {group_name}", file=sys.stderr)
     print(f"Deleting user {username} from LDAP", file=sys.stderr)
-    ldap_api.delete_user(username)
+    portal_ldap.delete_user(ldap_conn, ldap_base_dn, username)
     print(f"Deleted LDAP user: {username}", file=sys.stderr)
     return {"user": username}
 
@@ -372,10 +446,10 @@ def add_user_to_ldap_group(username: str, groupname: str):
     try:
         # Check if user is already in group
         user_groups = list(
-            map(lambda g: g[1]["cn"][0], ldap_api.get_user_groups(username))
+            map(lambda g: g[1]["cn"][0], portal_ldap.get_user_groups(ldap_conn, ldap_base_dn, username))
         )
         if groupname not in user_groups:
-            ldap_api.add_user_to_group(username, groupname)
+            portal_ldap.add_user_to_group(ldap_conn, ldap_base_dn, username, groupname)
             return {
                 "success": True,
                 "message": f"User {username} added to group {groupname}",
@@ -412,7 +486,7 @@ def get_user_ldap_groups(username: str):
     """
     try:
         user_groups = list(
-            map(lambda g: g[1]["cn"][0], ldap_api.get_user_groups(username))
+            map(lambda g: g[1]["cn"][0], portal_ldap.get_user_groups(ldap_conn, ldap_base_dn, username))
         )
         return user_groups
     except Exception as e:
@@ -442,7 +516,7 @@ def remove_user_from_ldap_group(username: str, groupname: str):
         HTTPException: If operation fails
     """
     try:
-        ldap_api.remove_user_from_group(username, groupname)
+        portal_ldap.remove_user_from_group(ldap_conn, ldap_base_dn, username, groupname)
         return {
             "success": True,
             "message": f"User {username} removed from group {groupname}",
