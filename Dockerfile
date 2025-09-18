@@ -11,6 +11,7 @@ RUN apt update && apt install -y --no-install-recommends \
     build-essential \
     libsasl2-dev \
     python3-dev \
+    libldap2-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
