@@ -30,6 +30,14 @@ class Terrain(object):
         r.raise_for_status()
         return r.json()["access_token"]
 
+    def get_concurrent_job_limits(self, token: str, username: str):
+        r = httpx.get(
+            self.api_url("admin", "settings", "concurrent-job-limits", username),
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        r.raise_for_status()
+        return r.json()
+
     def set_concurrent_job_limits(self, token: str, username: str, limit: int):
         r = httpx.put(
             self.api_url("admin", "settings", "concurrent-job-limits", username),

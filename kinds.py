@@ -47,6 +47,11 @@ class JobLimitsRequest(BaseModel):
     limit: int
 
 
+class JobLimitsResponse(BaseModel):
+    username: str
+    concurrent_jobs: int | None = None
+
+
 class GenericResponse(BaseModel):
     success: bool
     message: str
