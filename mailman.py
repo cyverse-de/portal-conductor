@@ -1,6 +1,8 @@
 import functools
+import logging
 import os.path
-from urllib.parse import urljoin
+import re
+from urllib.parse import urljoin, unquote
 
 import httpx
 
@@ -49,10 +51,12 @@ class Mailman(object):
 
         This accesses the Mailman 2.1 admin roster page and parses the HTML
         to determine if the email address is a member of the list.
+        Accounts for Mailman's letter-based pagination by requesting the
+        specific page for the email's first letter.
 
         Args:
             list_name: Name of the mailing list
-            email: Email address to check
+            email: Email address to check (may be URL-encoded)
 
         Returns:
             bool: True if email exists in the list, False otherwise
@@ -60,24 +64,43 @@ class Mailman(object):
         Raises:
             httpx.HTTPError: If the request fails or authentication is invalid
         """
+        # Decode URL-encoded email address
+        decoded_email = unquote(email)
+
+        # Extract first letter for pagination
+        first_letter = decoded_email[0].lower()
+
+        logging.debug(f"Checking membership for email: {email} (decoded: {decoded_email}) in list: {list_name}, letter page: {first_letter}")
+
         api_url = self.api_url("mailman", "admin", list_name, "members")
         r = httpx.get(
             api_url,
             follow_redirects=True,
-            params={"adminpw": self.password},
+            params={"adminpw": self.password, "letter": first_letter},
         )
         r.raise_for_status()
 
         # Parse the HTML response to check for the email address
-        # Mailman roster pages contain email addresses in the HTML content
-        return email.lower() in r.text.lower()
+        # Use regex with word boundaries for exact email matching
+        html_content = r.text.lower()
+        email_pattern = re.escape(decoded_email.lower())
+
+        # Look for the email with word boundaries to avoid partial matches
+        # This matches the email when it appears as a complete token
+        pattern = r'\b' + email_pattern + r'\b'
+
+        found = bool(re.search(pattern, html_content))
+        logging.debug(f"Email membership check result: {found} on letter page '{first_letter}'")
+
+        return found
 
     def list_members(self, list_name: str):
         """
         Retrieve a list of all members in a mailing list.
 
-        This accesses the Mailman 2.1 admin roster page and parses the HTML
-        to extract member email addresses from the list.
+        This accesses the Mailman 2.1 admin roster pages for all letter-based
+        pagination and parses the HTML to extract member email addresses.
+        Iterates through all letter pages (a-z, 0-9) to get complete membership.
 
         Args:
             list_name: Name of the mailing list
@@ -88,19 +111,9 @@ class Mailman(object):
         Raises:
             httpx.HTTPError: If the request fails or authentication is invalid
         """
-        import re
+        import string
 
-        api_url = self.api_url("mailman", "admin", list_name, "members")
-        r = httpx.get(
-            api_url,
-            follow_redirects=True,
-            params={"adminpw": self.password},
-        )
-        r.raise_for_status()
-
-        # Parse the HTML response to extract email addresses
-        # Mailman roster pages contain email addresses in various formats
-        html_content = r.text
+        logging.debug(f"Retrieving all members from mailing list: {list_name}")
 
         # Pattern to match email addresses in the roster page
         # Mailman typically displays emails in input fields, text areas, or plain text
@@ -108,12 +121,41 @@ class Mailman(object):
             r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
         )
 
-        # Find all email addresses and deduplicate
-        emails = set()
-        for match in email_pattern.finditer(html_content):
-            email = match.group().lower()
-            # Filter out common false positives (admin emails, system emails)
-            if not email.endswith(('@mailman.org', '@example.com')):
-                emails.add(email)
+        # Collect emails from all letter pages
+        all_emails = set()
+        api_url = self.api_url("mailman", "admin", list_name, "members")
 
-        return sorted(list(emails))
+        # Iterate through all possible letter pages (a-z, 0-9)
+        letters = string.ascii_lowercase + string.digits
+        for letter in letters:
+            try:
+                logging.debug(f"Fetching members from letter page: {letter}")
+                r = httpx.get(
+                    api_url,
+                    follow_redirects=True,
+                    params={"adminpw": self.password, "letter": letter},
+                )
+                r.raise_for_status()
+
+                # Parse the HTML response to extract email addresses
+                html_content = r.text
+
+                # Find all email addresses on this letter page
+                page_emails = set()
+                for match in email_pattern.finditer(html_content):
+                    email = match.group().lower()
+                    # Filter out common false positives (admin emails, system emails)
+                    if not email.endswith(('@mailman.org', '@example.com')):
+                        page_emails.add(email)
+
+                if page_emails:
+                    logging.debug(f"Found {len(page_emails)} emails on letter page '{letter}'")
+                    all_emails.update(page_emails)
+
+            except Exception as e:
+                # Log error but continue with other letters
+                logging.warning(f"Failed to fetch letter page '{letter}' for list {list_name}: {e}")
+                continue
+
+        logging.debug(f"Total emails found across all letter pages: {len(all_emails)}")
+        return sorted(list(all_emails))

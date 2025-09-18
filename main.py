@@ -141,7 +141,7 @@ terrain_url = config["terrain"]["url"]
 terrain_user = config["terrain"]["user"]
 terrain_password = config["terrain"]["password"]
 mailman_enabled = config["mailman"]["enabled"]
-mailmain_url = config["mailman"]["url"]
+mailman_url = config["mailman"]["url"]
 mailman_password = config["mailman"]["password"]
 ldap_url = config["ldap"]["url"]
 ldap_user = config["ldap"]["user"]
@@ -160,7 +160,7 @@ ds_api = portal_datastore.DataStore(irods_host, irods_port, irods_user, irods_pa
 terrain_api = terrain.Terrain(
     api_url=terrain_url, username=terrain_user, password=terrain_password
 )
-email_api = mailman.Mailman(api_url=mailmain_url, password=mailman_password)
+email_api = mailman.Mailman(api_url=mailman_url, password=mailman_password)
 smtp_service = email_service.EmailService()
 
 # Initialize dependencies for handlers
@@ -179,7 +179,7 @@ dependencies.init_dependencies(
     terrain_user=terrain_user,
     terrain_password=terrain_password,
     mailman_enabled=mailman_enabled,
-    mailman_url=mailmain_url,
+    mailman_url=mailman_url,
     mailman_password=mailman_password,
     ldap_url=ldap_url,
     ldap_user=ldap_user,
