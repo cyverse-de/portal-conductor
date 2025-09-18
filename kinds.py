@@ -76,6 +76,16 @@ class UserExistsResponse(BaseModel):
     exists: bool
 
 
+class EmailExistsResponse(BaseModel):
+    email: str
+    exists: bool
+
+
+class MailingListMembersResponse(BaseModel):
+    listname: str
+    members: list[str]
+
+
 class UserLDAPInfo(BaseModel):
     username: str
     uid_number: int | None = None
