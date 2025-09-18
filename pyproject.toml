@@ -10,3 +10,9 @@ dependencies = [
     "python-ldap>=3.4.4",
     "python-irodsclient>=3.1.1",
 ]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+]

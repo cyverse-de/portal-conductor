@@ -205,3 +205,113 @@ def shadow_last_change(conn, base_dn, days_since_epoch, username):
         f"uid={username},ou=People,{base_dn}",
         mod_shadow,
     )
+
+
+def decode_ldap_str_attr(attrs_dict, attr_name: str) -> str | None:
+    """Decode LDAP string attribute."""
+    attr_value = attrs_dict.get(attr_name)
+    if not attr_value:
+        return None
+
+    # Get first value if it's a list
+    value = attr_value[0] if isinstance(attr_value, list) else attr_value
+
+    if isinstance(value, bytes):
+        return value.decode('utf-8')
+
+    return str(value) if value else None
+
+
+def decode_ldap_int_attr(attrs_dict, attr_name: str) -> int | None:
+    """Decode LDAP integer attribute."""
+    attr_value = attrs_dict.get(attr_name)
+    if not attr_value:
+        return None
+
+    # Get first value if it's a list
+    value = attr_value[0] if isinstance(attr_value, list) else attr_value
+
+    if isinstance(value, bytes):
+        value = value.decode('utf-8')
+
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def decode_ldap_list_attr(attrs_dict, attr_name: str) -> list[str] | None:
+    """Decode LDAP list attribute."""
+    attr_value = attrs_dict.get(attr_name)
+    if not attr_value:
+        return None
+
+    result = []
+    for item in attr_value:
+        if isinstance(item, bytes):
+            result.append(item.decode('utf-8'))
+        else:
+            result.append(str(item))
+
+    return result if result else None
+
+
+def parse_user_attributes(user_result):
+    """
+    Parse LDAP user search result into a structured dictionary.
+
+    Args:
+        user_result: LDAP search result from get_user()
+
+    Returns:
+        Dictionary with parsed user attributes or None if user not found
+    """
+    if not user_result or len(user_result) == 0:
+        return None
+
+    # LDAP result format: [(dn, attributes_dict)]
+    user_attrs = user_result[0][1]
+
+    return {
+        "uid_number": decode_ldap_int_attr(user_attrs, 'uidNumber'),
+        "gid_number": decode_ldap_int_attr(user_attrs, 'gidNumber'),
+        "given_name": decode_ldap_str_attr(user_attrs, 'givenName'),
+        "surname": decode_ldap_str_attr(user_attrs, 'sn'),
+        "common_name": decode_ldap_str_attr(user_attrs, 'cn'),
+        "email": decode_ldap_str_attr(user_attrs, 'mail'),
+        "department": decode_ldap_str_attr(user_attrs, 'departmentNumber'),
+        "organization": decode_ldap_str_attr(user_attrs, 'o'),
+        "title": decode_ldap_str_attr(user_attrs, 'title'),
+        "home_directory": decode_ldap_str_attr(user_attrs, 'homeDirectory'),
+        "login_shell": decode_ldap_str_attr(user_attrs, 'loginShell'),
+        "shadow_last_change": decode_ldap_int_attr(user_attrs, 'shadowLastChange'),
+        "shadow_min": decode_ldap_int_attr(user_attrs, 'shadowMin'),
+        "shadow_max": decode_ldap_int_attr(user_attrs, 'shadowMax'),
+        "shadow_warning": decode_ldap_int_attr(user_attrs, 'shadowWarning'),
+        "shadow_inactive": decode_ldap_int_attr(user_attrs, 'shadowInactive'),
+        "object_classes": decode_ldap_list_attr(user_attrs, 'objectClass')
+    }
+
+
+def parse_group_attributes(group_result):
+    """
+    Parse LDAP group search result into a structured dictionary.
+
+    Args:
+        group_result: LDAP search result tuple from get_groups() - (dn, attributes_dict)
+
+    Returns:
+        Dictionary with parsed group attributes
+    """
+    # LDAP result format: (dn, attributes_dict)
+    group_attrs = group_result[1]
+
+    return {
+        "name": decode_ldap_str_attr(group_attrs, 'cn'),
+        "gid_number": decode_ldap_int_attr(group_attrs, 'gidNumber'),
+        "display_name": decode_ldap_str_attr(group_attrs, 'displayName'),
+        "description": decode_ldap_str_attr(group_attrs, 'description'),
+        "samba_group_type": decode_ldap_int_attr(group_attrs, 'sambaGroupType'),
+        "samba_sid": decode_ldap_str_attr(group_attrs, 'sambaSID'),
+        "object_classes": decode_ldap_list_attr(group_attrs, 'objectClass')
+    }

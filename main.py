@@ -4,7 +4,6 @@ import sys
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import email_service
@@ -159,50 +158,6 @@ email_api = mailman.Mailman(api_url=mailmain_url, password=mailman_password)
 smtp_service = email_service.EmailService()
 
 
-class PasswordChangeRequest(BaseModel):
-    password: str
-
-
-class UserResponse(BaseModel):
-    user: str
-
-
-class EmailListResponse(BaseModel):
-    list: str
-    email: str
-
-
-class DatastoreServiceRequest(BaseModel):
-    irods_path: str
-    irods_user: str | None = None
-
-
-class MailingListMemberRequest(BaseModel):
-    email: str
-
-
-class JobLimitsRequest(BaseModel):
-    limit: int
-
-
-class GenericResponse(BaseModel):
-    success: bool
-    message: str
-
-
-class EmailRequest(BaseModel):
-    to: str | list[str]
-    subject: str
-    text_body: str | None = None
-    html_body: str | None = None
-    from_email: str | None = None
-    bcc: str | list[str] | None = None
-
-
-class EmailResponse(BaseModel):
-    success: bool
-    message: str
-
 
 @app.get("/", status_code=200, tags=["Health"])
 def greeting():
@@ -213,7 +168,7 @@ def greeting():
 
 
 @app.post(
-    "/users", status_code=200, response_model=UserResponse, tags=["User Management"]
+    "/users", status_code=200, response_model=kinds.UserResponse, tags=["User Management"]
 )
 def add_user(user: kinds.CreateUserRequest):
     """
@@ -300,10 +255,10 @@ def add_user(user: kinds.CreateUserRequest):
 @app.post(
     "/users/{username}/password",
     status_code=200,
-    response_model=UserResponse,
+    response_model=kinds.UserResponse,
     tags=["User Management"],
 )
-def change_password(username: str, request: PasswordChangeRequest):
+def change_password(username: str, request: kinds.PasswordChangeRequest):
     """
     Change a user's password across all systems.
 
@@ -330,7 +285,7 @@ def change_password(username: str, request: PasswordChangeRequest):
 @app.delete(
     "/users/{username}",
     status_code=200,
-    response_model=UserResponse,
+    response_model=kinds.UserResponse,
     tags=["User Management"],
 )
 def delete_user(username: str):
@@ -367,7 +322,7 @@ def delete_user(username: str):
 @app.delete(
     "/emails/lists/{list_name}/addresses/{addr}",
     status_code=200,
-    response_model=EmailListResponse,
+    response_model=kinds.EmailListResponse,
     tags=["Email Management"],
 )
 def remove_addr_from_list(list_name: str, addr: str):
@@ -395,7 +350,7 @@ def remove_addr_from_list(list_name: str, addr: str):
 @app.post(
     "/emails/lists/{list_name}/addresses/{addr}",
     status_code=200,
-    response_model=EmailListResponse,
+    response_model=kinds.EmailListResponse,
     tags=["Email Management"],
 )
 def add_addr_to_list(list_name: str, addr: str):
@@ -426,7 +381,7 @@ def add_addr_to_list(list_name: str, addr: str):
 @app.post(
     "/ldap/users/{username}/groups/{groupname}",
     status_code=200,
-    response_model=GenericResponse,
+    response_model=kinds.GenericResponse,
     tags=["LDAP Management"],
 )
 def add_user_to_ldap_group(username: str, groupname: str):
@@ -498,7 +453,7 @@ def get_user_ldap_groups(username: str):
 @app.delete(
     "/ldap/users/{username}/groups/{groupname}",
     status_code=200,
-    response_model=GenericResponse,
+    response_model=kinds.GenericResponse,
     tags=["LDAP Management"],
 )
 def remove_user_from_ldap_group(username: str, groupname: str):
@@ -527,13 +482,241 @@ def remove_user_from_ldap_group(username: str, groupname: str):
         )
 
 
+@app.get(
+    "/ldap/users/{username}",
+    status_code=200,
+    response_model=kinds.UserLDAPInfo,
+    tags=["LDAP Management"],
+)
+def get_user_ldap_info(username: str):
+    """
+    Retrieve comprehensive LDAP information for a user.
+
+    This endpoint returns detailed user information from the LDAP directory,
+    including personal details, system attributes, and shadow account settings.
+    It provides a complete view of a user's LDAP profile for administrative
+    and integration purposes.
+
+    The returned information includes:
+    - Basic user identifiers (UID, GID numbers)
+    - Personal information (name, email, department, organization, title)
+    - System settings (home directory, login shell)
+    - Shadow account password policy settings
+    - LDAP object classes
+
+    Args:
+        username: The username to retrieve LDAP information for
+
+    Returns:
+        UserLDAPInfo: Complete LDAP user information including all available attributes
+
+    Raises:
+        HTTPException:
+            - 404: If the user is not found in LDAP
+            - 500: If LDAP query fails due to connection or other issues
+
+    Example:
+        GET /ldap/users/john.doe
+        Returns: {
+            "username": "john.doe",
+            "uid_number": 12345,
+            "gid_number": 10013,
+            "given_name": "John",
+            "surname": "Doe",
+            "common_name": "John Doe",
+            "email": "john.doe@example.org",
+            "department": "IT",
+            "organization": "Example University",
+            "title": "Software Engineer",
+            "home_directory": "/home/john.doe",
+            "login_shell": "/bin/bash",
+            "shadow_last_change": 19234,
+            "shadow_min": 1,
+            "shadow_max": 730,
+            "shadow_warning": 10,
+            "shadow_inactive": 10,
+            "object_classes": ["posixAccount", "shadowAccount", "inetOrgPerson"]
+        }
+    """
+    try:
+        user_result = portal_ldap.get_user(ldap_conn, ldap_base_dn, username)
+
+        if not user_result or len(user_result) == 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User '{username}' not found in LDAP directory"
+            )
+
+        user_attrs = portal_ldap.parse_user_attributes(user_result)
+        if user_attrs is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Failed to parse LDAP attributes for user '{username}'"
+            )
+
+        return kinds.UserLDAPInfo(
+            username=username,
+            uid_number=user_attrs.get("uid_number"),
+            gid_number=user_attrs.get("gid_number"),
+            given_name=user_attrs.get("given_name"),
+            surname=user_attrs.get("surname"),
+            common_name=user_attrs.get("common_name"),
+            email=user_attrs.get("email"),
+            department=user_attrs.get("department"),
+            organization=user_attrs.get("organization"),
+            title=user_attrs.get("title"),
+            home_directory=user_attrs.get("home_directory"),
+            login_shell=user_attrs.get("login_shell"),
+            shadow_last_change=user_attrs.get("shadow_last_change"),
+            shadow_min=user_attrs.get("shadow_min"),
+            shadow_max=user_attrs.get("shadow_max"),
+            shadow_warning=user_attrs.get("shadow_warning"),
+            shadow_inactive=user_attrs.get("shadow_inactive"),
+            object_classes=user_attrs.get("object_classes")
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve user LDAP information: {str(e)}"
+        )
+
+
+@app.get(
+    "/ldap/groups",
+    status_code=200,
+    response_model=list[kinds.LDAPGroupInfo],
+    tags=["LDAP Management"],
+)
+def get_ldap_groups():
+    """
+    Retrieve all available LDAP groups that users can join.
+
+    This endpoint returns a comprehensive list of all LDAP groups (posixGroup objects)
+    available in the directory. It provides essential group information for user
+    management interfaces, administrative tools, and integration systems that need
+    to display or manage group memberships.
+
+    The returned information for each group includes:
+    - Group name (cn) - the primary identifier for the group
+    - Group ID number (gidNumber) - numeric group identifier
+    - Display name - human-readable group name if available
+    - Description - group purpose or description
+    - Samba-related attributes (group type and SID) if configured
+    - LDAP object classes
+
+    This endpoint is particularly useful for:
+    - Populating group selection interfaces in user management UIs
+    - Administrative tools that need to display available groups
+    - Integration systems that synchronize group information
+    - Reporting and auditing tools
+
+    Returns:
+        list[LDAPGroupInfo]: List of all available LDAP groups with their details
+
+    Raises:
+        HTTPException: If LDAP query fails due to connection or other issues
+
+    Example:
+        GET /ldap/groups
+        Returns: [
+            {
+                "name": "developers",
+                "gid_number": 10001,
+                "display_name": "Development Team",
+                "description": "Software development group",
+                "samba_group_type": 2,
+                "samba_sid": "S-1-5-21-...",
+                "object_classes": ["posixGroup", "sambaGroupMapping"]
+            },
+            {
+                "name": "community",
+                "gid_number": 10013,
+                "display_name": "Community Users",
+                "description": "General community group for all users",
+                "samba_group_type": null,
+                "samba_sid": null,
+                "object_classes": ["posixGroup"]
+            }
+        ]
+    """
+    try:
+        groups_result = portal_ldap.get_groups(ldap_conn, ldap_base_dn)
+
+        if not groups_result:
+            return []
+
+        groups_list = []
+        for group_result in groups_result:
+            group_attrs = portal_ldap.parse_group_attributes(group_result)
+            if group_attrs and group_attrs.get("name"):
+                groups_list.append(kinds.LDAPGroupInfo(
+                    name=group_attrs["name"],
+                    gid_number=group_attrs.get("gid_number"),
+                    display_name=group_attrs.get("display_name"),
+                    description=group_attrs.get("description"),
+                    samba_group_type=group_attrs.get("samba_group_type"),
+                    samba_sid=group_attrs.get("samba_sid"),
+                    object_classes=group_attrs.get("object_classes")
+                ))
+
+        # Sort groups by name for consistent ordering
+        groups_list.sort(key=lambda g: g.name.lower())
+        return groups_list
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve LDAP groups: {str(e)}"
+        )
+
+
+@app.get(
+    "/ldap/users/{username}/exists",
+    status_code=200,
+    response_model=kinds.UserExistsResponse,
+    tags=["LDAP Management"],
+)
+def check_user_exists_in_ldap(username: str):
+    """
+    Check if a user exists in LDAP directory.
+
+    This endpoint verifies whether a given username exists as a posixAccount
+    in the LDAP directory. It's useful for validation before attempting user
+    operations or for user existence checks in external systems.
+
+    Args:
+        username: The username to check for existence in LDAP
+
+    Returns:
+        UserExistsResponse: Object containing the username and existence status
+
+    Raises:
+        HTTPException: If LDAP query fails due to connection or other issues
+
+    Example:
+        GET /ldap/users/john.doe/exists
+        Returns: {"username": "john.doe", "exists": true}
+    """
+    try:
+        user_result = portal_ldap.get_user(ldap_conn, ldap_base_dn, username)
+        exists = bool(user_result and len(user_result) > 0)
+        return kinds.UserExistsResponse(username=username, exists=exists)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to check user existence in LDAP: {str(e)}"
+        )
+
+
 @app.post(
     "/datastore/users/{username}/services",
     status_code=200,
-    response_model=GenericResponse,
+    response_model=kinds.GenericResponse,
     tags=["DataStore Management"],
 )
-def register_datastore_service(username: str, request: DatastoreServiceRequest):
+def register_datastore_service(username: str, request: kinds.DatastoreServiceRequest):
     """
     Register a user for datastore service access.
 
@@ -566,10 +749,10 @@ def register_datastore_service(username: str, request: DatastoreServiceRequest):
 @app.post(
     "/mailinglists/{listname}/members",
     status_code=200,
-    response_model=GenericResponse,
+    response_model=kinds.GenericResponse,
     tags=["Mailing List Management"],
 )
-def add_to_mailing_list(listname: str, request: MailingListMemberRequest):
+def add_to_mailing_list(listname: str, request: kinds.MailingListMemberRequest):
     """
     Add a user to a mailing list.
 
@@ -603,7 +786,7 @@ def add_to_mailing_list(listname: str, request: MailingListMemberRequest):
 @app.delete(
     "/mailinglists/{listname}/members/{email}",
     status_code=200,
-    response_model=GenericResponse,
+    response_model=kinds.GenericResponse,
     tags=["Mailing List Management"],
 )
 def remove_from_mailing_list(listname: str, email: str):
@@ -640,10 +823,10 @@ def remove_from_mailing_list(listname: str, email: str):
 @app.post(
     "/terrain/users/{username}/job-limits",
     status_code=200,
-    response_model=GenericResponse,
+    response_model=kinds.GenericResponse,
     tags=["Terrain Management"],
 )
-def set_job_limits(username: str, request: JobLimitsRequest):
+def set_job_limits(username: str, request: kinds.JobLimitsRequest):
     """
     Set VICE job limits for a user via Terrain.
 
@@ -675,10 +858,10 @@ def set_job_limits(username: str, request: JobLimitsRequest):
 @app.post(
     "/emails/send",
     status_code=200,
-    response_model=EmailResponse,
+    response_model=kinds.EmailResponse,
     tags=["Email Management"],
 )
-def send_email(request: EmailRequest):
+def send_email(request: kinds.EmailRequest):
     """
     Send an email via SMTP.
 
