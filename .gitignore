@@ -10,3 +10,7 @@ wheels/
 .venv
 
 config.json
+.clj-kondo/
+.coverage
+.lsp/ 
+build.json
