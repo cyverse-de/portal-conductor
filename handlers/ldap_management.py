@@ -14,6 +14,72 @@ from handlers import dependencies
 router = APIRouter(prefix="/ldap", tags=["LDAP Management"])
 
 
+@router.post("/users", status_code=200, response_model=kinds.UserResponse)
+def create_ldap_user(user: kinds.CreateUserRequest):
+    """
+    Create a user in LDAP directory (idempotent).
+
+    This endpoint creates a user account in the LDAP directory with all
+    necessary attributes and optionally adds them to default groups.
+    Multiple calls with the same parameters will have the same effect
+    as a single call, making this operation idempotent.
+
+    The operation performs the following steps:
+    - Creates the user account in LDAP (if it doesn't exist)
+    - Sets the user's password
+    - Adds the user to everyone and community groups (if not already a member)
+
+    All steps are performed idempotently - existing resources are left unchanged.
+
+    Args:
+        user: User information including personal details and credentials
+
+    Returns:
+        UserResponse: Confirmation with the created username
+
+    Raises:
+        HTTPException: If user creation or group addition fails
+
+    Example:
+        POST /ldap/users
+        {
+            "first_name": "John",
+            "last_name": "Doe",
+            "email": "john.doe@example.org",
+            "username": "john.doe",
+            "user_uid": "12345",
+            "password": "securepassword",
+            "department": "IT",
+            "organization": "Example University",
+            "title": "Software Engineer"
+        }
+
+    Note:
+        - Safe to call multiple times with the same parameters
+        - Creates LDAP user with posixAccount, shadowAccount, and inetOrgPerson object classes
+        - Automatically adds to configured everyone and community groups
+        - Sets standard shadow password policy attributes
+    """
+    ldap_conn = dependencies.get_ldap_conn()
+    ldap_base_dn = dependencies.get_ldap_base_dn()
+    ldap_everyone_group = dependencies.get_ldap_everyone_group()
+    ldap_community_group = dependencies.get_ldap_community_group()
+
+    try:
+        portal_ldap.create_ldap_user_with_groups(
+            ldap_conn,
+            ldap_base_dn,
+            user,
+            everyone_group=ldap_everyone_group,
+            community_group=ldap_community_group
+        )
+        return {"user": user.username}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create LDAP user: {str(e)}"
+        )
+
+
 @router.post("/users/{username}/groups/{groupname}", status_code=200, response_model=kinds.GenericResponse)
 def add_user_to_ldap_group(username: str, groupname: str):
     """

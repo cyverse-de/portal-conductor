@@ -121,6 +121,30 @@ class DataStore(object):
             )
             raise
 
+    def _set_permission_if_needed(self, current_perms: list[iRODSAccess],
+                                  username: str, permission: str, path: str) -> bool:
+        """
+        Helper method to set permission only if it doesn't already exist.
+
+        Args:
+            current_perms: List of current permissions for the path
+            username: Username to set permission for (empty string for inherit)
+            permission: Permission type to set
+            path: Path to set permission on
+
+        Returns:
+            bool: True if permission was set, False if it already existed
+        """
+        perm_exists = any(
+            perm.user_name == username and perm.access_name == permission
+            for perm in current_perms
+        )
+        if not perm_exists:
+            perm = PathPermission(username=username, permission=permission, path=path)
+            self.chmod(perm)
+            return True
+        return False
+
     def register_service(
         self, username: str, irods_path: str, irods_user: str | None = None
     ):
@@ -133,32 +157,24 @@ class DataStore(object):
             raise Exception(f"Failed to prepare user {username}: {str(e)}")
 
         home_dir = self.user_home(username)
-
         full_path = os.path.join(home_dir, irods_path)
+
+        # Create directory if it doesn't exist
         if not self.path_exists(full_path):
             self.session.collections.create(full_path)
 
-        # Set permissions idempotently - check current permissions first
+        # Set permissions idempotently
         current_perms = self.path_permissions(full_path)
 
         # Set inherit permission if not already set
-        inherit_set = any(perm.user_name == "" and perm.access_name == "inherit" for perm in current_perms)
-        if not inherit_set:
-            inherit_perm = PathPermission(username="", permission="inherit", path=full_path)
-            self.chmod(inherit_perm)
+        self._set_permission_if_needed(current_perms, "", "inherit", full_path)
 
         # Set owner permission for username if not already set
-        user_owns = any(perm.user_name == username and perm.access_name == "own" for perm in current_perms)
-        if not user_owns:
-            user_perm = PathPermission(username=username, permission="own", path=full_path)
-            self.chmod(user_perm)
+        self._set_permission_if_needed(current_perms, username, "own", full_path)
 
         # Set owner permission for irods_user if specified and not already set
         if irods_user is not None:
-            irods_user_owns = any(perm.user_name == irods_user and perm.access_name == "own" for perm in current_perms)
-            if not irods_user_owns:
-                irods_user_perm = PathPermission(username=irods_user, permission="own", path=full_path)
-                self.chmod(irods_user_perm)
+            self._set_permission_if_needed(current_perms, irods_user, "own", full_path)
 
         return {
             "user": username,
@@ -199,3 +215,83 @@ class DataStore(object):
             self.chmod(home_perm)
 
         return user
+
+    def create_datastore_user_with_permissions(self, username: str, password: str,
+                                               ipcservices_user: str, ds_admin_user: str):
+        """
+        Create a datastore user with home directory and default permissions (idempotent).
+
+        This function handles the complete datastore user creation workflow:
+        - Creates the user account in iRODS (if it doesn't exist)
+        - Sets the user's password (always set for security - not truly idempotent)
+        - Creates the user's home directory (if it doesn't exist)
+        - Sets appropriate permissions for ipcservices and admin users
+
+        All operations except password setting are performed idempotently.
+        Password is always updated for security reasons as iRODS doesn't provide
+        a secure way to verify if the current password matches the desired password.
+
+        Args:
+            username: The username to create
+            password: The password for the user
+            ipcservices_user: Username for ipcservices permissions
+            ds_admin_user: Username for admin permissions
+
+        Returns:
+            str: The username of the created/existing user
+
+        Raises:
+            Exception: If user creation, directory creation, or permission setting fails
+        """
+        # Health check before operations
+        print(f"Creating data store user: {username}", file=sys.stderr)
+        self.health_check()
+
+        # Ensure user exists (create if necessary) - this is idempotent
+        self.ensure_user_exists(username)
+
+        # Set password - NOTE: This is not idempotent for security reasons
+        # iRODS doesn't provide a secure way to check if password is already set
+        print(f"Setting data store password for: {username}", file=sys.stderr)
+        self.change_password(username, password)
+
+        # Get home directory path
+        print(f"Getting home directory for: {username}", file=sys.stderr)
+        home_dir = self.user_home(username)
+
+        # Set permissions idempotently
+        current_perms = self.path_permissions(home_dir)
+
+        # Set ipcservices permissions if not already set
+        ipcservices_owns = any(
+            perm.user_name == ipcservices_user and perm.access_name == "own"
+            for perm in current_perms
+        )
+        if not ipcservices_owns:
+            print(f"Setting ipcservices permissions for: {home_dir}", file=sys.stderr)
+            ipcservices_perm = PathPermission(
+                username=ipcservices_user,
+                permission="own",
+                path=home_dir,
+            )
+            self.chmod(ipcservices_perm)
+        else:
+            print(f"ipcservices user {ipcservices_user} already owns {home_dir}", file=sys.stderr)
+
+        # Set admin permissions if not already set
+        admin_owns = any(
+            perm.user_name == ds_admin_user and perm.access_name == "own"
+            for perm in current_perms
+        )
+        if not admin_owns:
+            print(f"Setting rodsadmin permissions for: {home_dir}", file=sys.stderr)
+            rodsadmin_perm = PathPermission(
+                username=ds_admin_user,
+                permission="own",
+                path=home_dir,
+            )
+            self.chmod(rodsadmin_perm)
+        else:
+            print(f"Admin user {ds_admin_user} already owns {home_dir}", file=sys.stderr)
+
+        return username

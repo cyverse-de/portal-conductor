@@ -7,6 +7,7 @@ import ldap
 import ldap.modlist
 import kinds
 import datetime
+import sys
 
 
 def connect(ldap_url, ldap_user, ldap_password):
@@ -145,6 +146,64 @@ def create_user(conn, base_dn, days_since_epoch, user: kinds.CreateUserRequest):
         }
     )
     return conn.add_s(f"uid={user.username},ou=People,{base_dn}", new_user)
+
+
+def create_ldap_user_with_groups(conn, base_dn, user: kinds.CreateUserRequest,
+                                 everyone_group: str | None = None,
+                                 community_group: str | None = None):
+    """
+    Create a user in LDAP and optionally add them to default groups (idempotent).
+
+    This function handles the complete LDAP user creation workflow:
+    - Creates the user account in LDAP (if it doesn't exist)
+    - Sets the user's password
+    - Adds the user to specified groups (if provided and not already a member)
+
+    All operations are performed idempotently - existing resources are left unchanged.
+
+    Args:
+        conn: LDAP connection object
+        base_dn: LDAP base distinguished name
+        user: User information including personal details and credentials
+        everyone_group: Optional name of the "everyone" group to add user to
+        community_group: Optional name of the "community" group to add user to
+
+    Returns:
+        str: The username of the created/existing user
+
+    Raises:
+        Exception: If user creation or group addition fails
+    """
+    # Check if user already exists
+    existing_user = get_user(conn, base_dn, user.username)
+    if not existing_user or len(existing_user) == 0:
+        dse = days_since_epoch()
+        print(f"Creating LDAP user: {user.username}", file=sys.stderr)
+        create_user(conn, base_dn, dse, user)
+
+        print(f"Setting LDAP password for: {user.username}", file=sys.stderr)
+        change_password(conn, base_dn, user.username, user.password)
+    else:
+        print(f"LDAP user {user.username} already exists, skipping creation", file=sys.stderr)
+
+    # Add to groups if specified and not already a member
+    if everyone_group:
+        user_groups = [g[1]["cn"][0].decode('utf-8') for g in get_user_groups(conn, base_dn, user.username)]
+        if everyone_group not in user_groups:
+            print(f"Adding user {user.username} to everyone group: {everyone_group}", file=sys.stderr)
+            add_user_to_group(conn, base_dn, user.username, everyone_group)
+        else:
+            print(f"User {user.username} already in everyone group: {everyone_group}", file=sys.stderr)
+
+    if community_group:
+        user_groups = [g[1]["cn"][0].decode('utf-8') for g in get_user_groups(conn, base_dn, user.username)]
+        if community_group not in user_groups:
+            print(f"Adding user {user.username} to community group: {community_group}", file=sys.stderr)
+            add_user_to_group(conn, base_dn, user.username, community_group)
+        else:
+            print(f"User {user.username} already in community group: {community_group}", file=sys.stderr)
+
+    return user.username
 
 
 def add_user_to_group(conn, base_dn, username, group):

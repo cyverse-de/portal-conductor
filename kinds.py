@@ -34,6 +34,11 @@ class EmailListResponse(BaseModel):
     email: str
 
 
+class DatastoreUserRequest(BaseModel):
+    username: str
+    password: str
+
+
 class DatastoreServiceRequest(BaseModel):
     irods_path: str
     irods_user: str | None = None

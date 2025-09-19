@@ -11,7 +11,6 @@ import traceback
 from fastapi import APIRouter, HTTPException
 
 import kinds
-import portal_datastore
 import portal_ldap
 from handlers import dependencies
 
@@ -48,51 +47,22 @@ def add_user(user: kinds.CreateUserRequest):
     ds_admin_user = dependencies.get_ds_admin_user()
 
     try:
-        print(f"Creating LDAP user: {user.username}", file=sys.stderr)
-        dse = portal_ldap.days_since_epoch()
-        portal_ldap.create_user(ldap_conn, ldap_base_dn, dse, user)
-
-        print(f"Setting LDAP password for: {user.username}", file=sys.stderr)
-        portal_ldap.change_password(ldap_conn, ldap_base_dn, user.username, user.password)
-
-        print(
-            f"Adding user {user.username} to everyone group: {ldap_everyone_group}",
-            file=sys.stderr,
+        # Create LDAP user with groups (idempotent)
+        portal_ldap.create_ldap_user_with_groups(
+            ldap_conn,
+            ldap_base_dn,
+            user,
+            everyone_group=ldap_everyone_group,
+            community_group=ldap_community_group
         )
-        portal_ldap.add_user_to_group(ldap_conn, ldap_base_dn, user.username, ldap_everyone_group)
 
-        print(
-            f"Adding user {user.username} to community group: {ldap_community_group}",
-            file=sys.stderr,
+        # Create DataStore user with permissions (mostly idempotent)
+        ds_api.create_datastore_user_with_permissions(
+            username=user.username,
+            password=user.password,
+            ipcservices_user=ipcservices_user,
+            ds_admin_user=ds_admin_user
         )
-        portal_ldap.add_user_to_group(ldap_conn, ldap_base_dn, user.username, ldap_community_group)
-
-        print(f"Creating data store user: {user.username}", file=sys.stderr)
-        # Check if datastore service is reachable before user creation
-        ds_api.health_check()
-        ds_api.create_user(user.username)
-
-        print(f"Setting data store password for: {user.username}", file=sys.stderr)
-        ds_api.change_password(user.username, user.password)
-
-        print(f"Getting home directory for: {user.username}", file=sys.stderr)
-        home_dir = ds_api.user_home(user.username)
-
-        print(f"Setting ipcservices permissions for: {home_dir}", file=sys.stderr)
-        ipcservices_perm = portal_datastore.PathPermission(
-            username=ipcservices_user,
-            permission="own",
-            path=home_dir,
-        )
-        ds_api.chmod(ipcservices_perm)
-
-        print(f"Setting rodsadmin permissions for: {home_dir}", file=sys.stderr)
-        rodsadmin_perm = portal_datastore.PathPermission(
-            username=ds_admin_user,
-            permission="own",
-            path=home_dir,
-        )
-        ds_api.chmod(rodsadmin_perm)
 
         print(
             f"User creation completed successfully for: {user.username}",

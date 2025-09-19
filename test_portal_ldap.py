@@ -9,7 +9,6 @@ These tests cover the new LDAP attribute decoding functions added to portal_ldap
 """
 
 import pytest
-from unittest.mock import Mock, patch
 import portal_ldap
 
 

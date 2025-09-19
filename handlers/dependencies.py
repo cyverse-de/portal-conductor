@@ -5,13 +5,15 @@ This module provides access to shared resources like configuration values
 and service connections without creating circular imports.
 """
 
+from typing import Any
+
 # Global variables that will be set by main.py
-_config = None
-_ldap_conn = None
-_ds_api = None
-_terrain_api = None
-_email_api = None
-_smtp_service = None
+_config: dict[str, Any] | None = None
+_ldap_conn: Any = None
+_ds_api: Any = None
+_terrain_api: Any = None
+_email_api: Any = None
+_smtp_service: Any = None
 
 # Configuration values
 _ldap_community_group = None
