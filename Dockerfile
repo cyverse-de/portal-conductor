@@ -32,8 +32,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Set PATH to include virtual environment
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Expose port
-EXPOSE 8000
+# Expose ports for both HTTP and HTTPS
+EXPOSE 8000 8443
 
-# Use production server instead of dev server
-CMD ["fastapi", "run", "--host", "0.0.0.0", "--port", "8000", "main.py"]
+# Use our custom startup script with SSL support
+CMD ["python", "start.py"]

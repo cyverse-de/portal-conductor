@@ -9,12 +9,13 @@ from fastapi import APIRouter, HTTPException
 
 import kinds
 from handlers import dependencies
+from handlers.auth import AuthDep
 
 router = APIRouter(prefix="/terrain", tags=["Terrain Management"])
 
 
 @router.get("/users/{username}/job-limits", status_code=200, response_model=kinds.JobLimitsResponse)
-def get_job_limits(username: str):
+def get_job_limits(username: str, current_user: AuthDep):
     """
     Retrieve current VICE job limits for a user via Terrain.
 
@@ -78,7 +79,7 @@ def get_job_limits(username: str):
 
 
 @router.post("/users/{username}/job-limits", status_code=200, response_model=kinds.GenericResponse)
-def set_job_limits(username: str, request: kinds.JobLimitsRequest):
+def set_job_limits(username: str, request: kinds.JobLimitsRequest, current_user: AuthDep):
     """
     Set VICE job limits for a user via Terrain.
 

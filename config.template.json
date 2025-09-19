@@ -1,4 +1,19 @@
 {
+  "ssl": {
+    "enabled": true,
+    "cert_file": "./ssl-certs/portal-conductor.crt",
+    "key_file": "./ssl-certs/portal-conductor.key",
+    "port": 8443
+  },
+  "server": {
+    "http_port": 8000
+  },
+  "auth": {
+    "enabled": true,
+    "username": "admin",
+    "password": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj0kB.z8.6X2",
+    "realm": "Portal Conductor API"
+  },
   "ldap": {
     "url": "ldap://your-ldap-server:389",
     "user": "cn=admin,dc=example,dc=com",

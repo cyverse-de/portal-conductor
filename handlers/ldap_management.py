@@ -10,12 +10,13 @@ from fastapi import APIRouter, HTTPException
 import kinds
 import portal_ldap
 from handlers import dependencies
+from handlers.auth import AuthDep
 
 router = APIRouter(prefix="/ldap", tags=["LDAP Management"])
 
 
 @router.post("/users", status_code=200, response_model=kinds.UserResponse)
-def create_ldap_user(user: kinds.CreateUserRequest):
+def create_ldap_user(user: kinds.CreateUserRequest, current_user: AuthDep):
     """
     Create a user in LDAP directory (idempotent).
 
@@ -81,7 +82,7 @@ def create_ldap_user(user: kinds.CreateUserRequest):
 
 
 @router.post("/users/{username}/groups/{groupname}", status_code=200, response_model=kinds.GenericResponse)
-def add_user_to_ldap_group(username: str, groupname: str):
+def add_user_to_ldap_group(username: str, groupname: str, current_user: AuthDep):
     """
     Add a user to an LDAP group.
 
@@ -121,7 +122,7 @@ def add_user_to_ldap_group(username: str, groupname: str):
 
 
 @router.get("/users/{username}/groups", status_code=200, response_model=list[str])
-def get_user_ldap_groups(username: str):
+def get_user_ldap_groups(username: str, current_user: AuthDep):
     """
     Get all LDAP groups for a user.
 
@@ -149,7 +150,7 @@ def get_user_ldap_groups(username: str):
 
 
 @router.delete("/users/{username}/groups/{groupname}", status_code=200, response_model=kinds.GenericResponse)
-def remove_user_from_ldap_group(username: str, groupname: str):
+def remove_user_from_ldap_group(username: str, groupname: str, current_user: AuthDep):
     """
     Remove a user from an LDAP group.
 
@@ -179,7 +180,7 @@ def remove_user_from_ldap_group(username: str, groupname: str):
 
 
 @router.get("/users/{username}", status_code=200, response_model=kinds.UserLDAPInfo)
-def get_user_ldap_info(username: str):
+def get_user_ldap_info(username: str, current_user: AuthDep):
     """
     Retrieve comprehensive LDAP information for a user.
 
@@ -279,7 +280,7 @@ def get_user_ldap_info(username: str):
 
 
 @router.get("/groups", status_code=200, response_model=list[kinds.LDAPGroupInfo])
-def get_ldap_groups():
+def get_ldap_groups(current_user: AuthDep):
     """
     Retrieve all available LDAP groups that users can join.
 
@@ -366,7 +367,7 @@ def get_ldap_groups():
 
 
 @router.get("/users/{username}/exists", status_code=200, response_model=kinds.UserExistsResponse)
-def check_user_exists_in_ldap(username: str):
+def check_user_exists_in_ldap(username: str, current_user: AuthDep):
     """
     Check if a user exists in LDAP directory.
 

@@ -13,12 +13,13 @@ from fastapi import APIRouter, HTTPException
 import kinds
 import portal_ldap
 from handlers import dependencies
+from handlers.auth import AuthDep
 
 router = APIRouter(prefix="/users", tags=["User Management"])
 
 
 @router.post("/", status_code=200, response_model=kinds.UserResponse)
-def add_user(user: kinds.CreateUserRequest):
+def add_user(user: kinds.CreateUserRequest, current_user: AuthDep):
     """
     Create a new user account in the CyVerse platform.
 
@@ -78,7 +79,7 @@ def add_user(user: kinds.CreateUserRequest):
 
 
 @router.post("/{username}/password", status_code=200, response_model=kinds.UserResponse)
-def change_password(username: str, request: kinds.PasswordChangeRequest):
+def change_password(username: str, request: kinds.PasswordChangeRequest, current_user: AuthDep):
     """
     Change a user's password across all systems.
 
@@ -107,7 +108,7 @@ def change_password(username: str, request: kinds.PasswordChangeRequest):
 
 
 @router.delete("/{username}", status_code=200, response_model=kinds.UserResponse)
-def delete_user(username: str):
+def delete_user(username: str, current_user: AuthDep):
     """
     Delete a user account from LDAP.
 

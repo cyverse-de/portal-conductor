@@ -9,12 +9,13 @@ from fastapi import APIRouter, HTTPException
 
 import kinds
 from handlers import dependencies
+from handlers.auth import AuthDep
 
 router = APIRouter(prefix="/emails", tags=["Email Management"])
 
 
 @router.post("/send", status_code=200, response_model=kinds.EmailResponse)
-def send_email(request: kinds.EmailRequest):
+def send_email(request: kinds.EmailRequest, current_user: AuthDep):
     """
     Send an email via SMTP.
 

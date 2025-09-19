@@ -9,12 +9,13 @@ from fastapi import APIRouter, HTTPException
 
 import kinds
 from handlers import dependencies
+from handlers.auth import AuthDep
 
 router = APIRouter(prefix="/mailinglists", tags=["Mailing List Management"])
 
 
 @router.get("/{listname}/members", status_code=200, response_model=kinds.MailingListMembersResponse)
-def list_mailing_list_members(listname: str):
+def list_mailing_list_members(listname: str, current_user: AuthDep):
     """
     Retrieve a list of all members in a mailing list.
 
@@ -87,7 +88,7 @@ def list_mailing_list_members(listname: str):
 
 
 @router.post("/{listname}/members", status_code=200, response_model=kinds.GenericResponse)
-def add_to_mailing_list(listname: str, request: kinds.MailingListMemberRequest):
+def add_to_mailing_list(listname: str, request: kinds.MailingListMemberRequest, current_user: AuthDep):
     """
     Add a user to a mailing list.
 
@@ -122,7 +123,7 @@ def add_to_mailing_list(listname: str, request: kinds.MailingListMemberRequest):
 
 
 @router.delete("/{listname}/members/{email}", status_code=200, response_model=kinds.GenericResponse)
-def remove_from_mailing_list(listname: str, email: str):
+def remove_from_mailing_list(listname: str, email: str, current_user: AuthDep):
     """
     Remove a user from a mailing list.
 
@@ -157,7 +158,7 @@ def remove_from_mailing_list(listname: str, email: str):
 
 
 @router.get("/{listname}/members/{email}/exists", status_code=200, response_model=kinds.EmailExistsResponse)
-def check_email_exists_in_mailing_list(listname: str, email: str):
+def check_email_exists_in_mailing_list(listname: str, email: str, current_user: AuthDep):
     """
     Check if an email address exists in a mailing list.
 

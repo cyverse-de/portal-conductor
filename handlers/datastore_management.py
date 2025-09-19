@@ -9,12 +9,13 @@ from fastapi import APIRouter, HTTPException
 
 import kinds
 from handlers import dependencies
+from handlers.auth import AuthDep
 
 router = APIRouter(prefix="/datastore", tags=["DataStore Management"])
 
 
 @router.post("/users", status_code=200, response_model=kinds.UserResponse)
-def create_datastore_user(request: kinds.DatastoreUserRequest):
+def create_datastore_user(request: kinds.DatastoreUserRequest, current_user: AuthDep):
     """
     Create a user in the iRODS datastore or reset an existing user's password.
 
@@ -87,7 +88,7 @@ def create_datastore_user(request: kinds.DatastoreUserRequest):
 
 
 @router.get("/users/{username}/exists", status_code=200, response_model=kinds.UserExistsResponse)
-def check_user_exists_in_datastore(username: str):
+def check_user_exists_in_datastore(username: str, current_user: AuthDep):
     """
     Check if a user exists in the iRODS data store.
 
@@ -143,7 +144,7 @@ def check_user_exists_in_datastore(username: str):
 
 
 @router.post("/users/{username}/services", status_code=200, response_model=kinds.GenericResponse)
-def register_datastore_service(username: str, request: kinds.DatastoreServiceRequest):
+def register_datastore_service(username: str, request: kinds.DatastoreServiceRequest, current_user: AuthDep):
     """
     Register a user for datastore service access (idempotent).
 

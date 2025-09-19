@@ -72,9 +72,25 @@ def load_config():
 # Load configuration
 config = load_config()
 
+# Extract SSL configuration
+ssl_enabled = config.get("ssl", {}).get("enabled", False)
+ssl_cert_file = config.get("ssl", {}).get("cert_file")
+ssl_key_file = config.get("ssl", {}).get("key_file")
+ssl_port = config.get("ssl", {}).get("port", 8443)
+http_port = config.get("server", {}).get("http_port", 8000)
+
+# Extract authentication configuration
+auth_enabled = config.get("auth", {}).get("enabled", True)
+auth_realm = config.get("auth", {}).get("realm", "Portal Conductor API")
+
+# Configure API description based on auth status
+api_description = "API for managing user accounts, email lists, and service registrations in the CyVerse platform"
+if auth_enabled:
+    api_description += "\n\n**Authentication Required**: This API uses HTTP Basic Authentication. Use the 'Authorize' button below to provide credentials."
+
 app = FastAPI(
     title="Portal Conductor API",
-    description="API for managing user accounts, email lists, and service registrations in the CyVerse platform",
+    description=api_description,
     version="1.0.0",
     contact={
         "name": "CyVerse Support",
@@ -198,6 +214,9 @@ dependencies.init_dependencies(
 def greeting():
     """
     Health check endpoint that returns a greeting message.
+
+    This endpoint is intentionally unauthenticated to allow health checks
+    from monitoring systems and load balancers.
     """
     return "Hello from portal-conductor."
 
