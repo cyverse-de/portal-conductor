@@ -35,5 +35,5 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Expose ports for both HTTP and HTTPS
 EXPOSE 8000 8443
 
-# Use our custom startup script with SSL support
-CMD ["python", "start.py"]
+# Use our dual-port startup script with SSL support
+CMD ["python", "start_dual.py"]

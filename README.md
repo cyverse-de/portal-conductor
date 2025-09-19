@@ -61,10 +61,17 @@ Update the `auth.password` field in `config.json` with the generated hash.
 ### 5. Run
 
 ```bash
-uv run python start.py
+uv run python start_dual.py
 ```
 
-The service starts on HTTPS port 8443 (with certificates) or HTTP port 8000 (fallback).
+The service runs in dual-port mode:
+- **HTTPS port 8443**: Full API with authentication (when certificates available)
+- **HTTP port 8000**: Health checks only (always available)
+
+Single-port fallback mode:
+```bash
+uv run python start.py  # HTTP only if certificates missing
+```
 
 ### 6. Test
 
@@ -258,10 +265,16 @@ portal-conductor/
 ├── scripts/           # Utility scripts
 ├── ssl-certs/         # SSL certificates (generated)
 ├── main.py           # FastAPI application
-├── start.py          # Smart startup script
+├── start_dual.py     # Dual-port startup (production)
+├── start.py          # Single-port startup (fallback)
 ├── config.template.json
 └── pyproject.toml
 ```
+
+### Startup Scripts
+
+- **`start_dual.py`** (recommended): Runs HTTPS (full API) + HTTP (health only)
+- **`start.py`** (fallback): Runs single port (HTTPS or HTTP)
 
 ### Running Tests
 

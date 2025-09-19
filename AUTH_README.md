@@ -34,11 +34,12 @@ Edit `config.json`:
 ### 3. Test Authentication
 
 ```bash
-# Health check (no auth required)
+# Health check (no auth required) - works on both ports
 curl http://localhost:8000/
+curl -k https://localhost:8443/
 
-# Authenticated endpoint
-curl -u admin:your_password http://localhost:8000/users/test/exists
+# Authenticated endpoint - HTTPS only (HTTP port blocks API endpoints)
+curl -k -u admin:your_password https://localhost:8443/users/test/exists
 ```
 
 ## Environment Variables
@@ -64,12 +65,12 @@ export AUTH_REALM="Portal Conductor API"
 ### With Authentication
 
 ```bash
-# Basic auth
-curl -u username:password http://localhost:8000/ldap/users/john.doe/exists
+# Basic auth (HTTPS required for API endpoints)
+curl -k -u username:password https://localhost:8443/ldap/users/john.doe/exists
 
 # Authorization header
-curl -H "Authorization: Basic $(echo -n 'username:password' | base64)" \
-     http://localhost:8000/ldap/users/john.doe/exists
+curl -k -H "Authorization: Basic $(echo -n 'username:password' | base64)" \
+     https://localhost:8443/ldap/users/john.doe/exists
 ```
 
 ### Response Codes
@@ -127,7 +128,7 @@ export AUTH_ENABLED=false
 ## Security Notes
 
 - Passwords stored as bcrypt hashes (cost factor 12)
-- Always use HTTPS in production
+- API endpoints only accessible via HTTPS (HTTP port restricted to health checks)
 - Use strong, unique passwords
 - Rotate credentials regularly
 - Store production credentials securely (Kubernetes secrets, Vault)
