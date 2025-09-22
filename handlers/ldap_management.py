@@ -399,3 +399,69 @@ def check_user_exists_in_ldap(username: str, current_user: AuthDep):
         raise HTTPException(
             status_code=500, detail=f"Failed to check user existence in LDAP: {str(e)}"
         )
+
+
+@router.put("/users/{username}/attributes/{attribute}", status_code=200, response_model=kinds.GenericResponse)
+def modify_user_ldap_attribute(username: str, attribute: str, request: kinds.UserAttributeModifyRequest, current_user: AuthDep):
+    """
+    Modify a user's LDAP attribute.
+
+    This endpoint allows updating specific LDAP attributes for a user, such as
+    email address, first name, last name, or common name. It provides a generic
+    interface for LDAP attribute modifications while maintaining proper validation
+    and error handling.
+
+    Common attributes that can be modified:
+    - mail: Email address
+    - givenName: First name
+    - sn: Surname/last name
+    - cn: Common name (full name)
+    - title: Job title
+    - telephoneNumber: Phone number
+
+    Args:
+        username: The username whose attribute should be modified
+        attribute: The LDAP attribute name to modify
+        request: Request body containing the new value
+
+    Returns:
+        GenericResponse: Success status and message
+
+    Raises:
+        HTTPException: If user doesn't exist, attribute modification fails, or validation errors
+
+    Example:
+        PUT /ldap/users/john.doe/attributes/mail
+        {"value": "john.doe@newdomain.com"}
+
+        Returns: {"success": true, "message": "Updated attribute 'mail' for user 'john.doe'"}
+    """
+    ldap_conn = dependencies.get_ldap_conn()
+    ldap_base_dn = dependencies.get_ldap_base_dn()
+
+    try:
+        # First check if user exists
+        user_result = portal_ldap.get_user(ldap_conn, ldap_base_dn, username)
+        if not user_result or len(user_result) == 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User '{username}' not found in LDAP directory"
+            )
+
+        # Modify the attribute
+        portal_ldap.modify_user_attribute(ldap_conn, ldap_base_dn, username, attribute, request.value)
+
+        return kinds.GenericResponse(
+            success=True,
+            message=f"Updated attribute '{attribute}' for user '{username}'"
+        )
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to modify LDAP attribute '{attribute}' for user '{username}': {str(e)}"
+        )

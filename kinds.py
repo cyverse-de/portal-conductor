@@ -25,6 +25,10 @@ class PasswordChangeRequest(BaseModel):
     password: str
 
 
+class UserAttributeModifyRequest(BaseModel):
+    value: str
+
+
 class UserResponse(BaseModel):
     user: str
 

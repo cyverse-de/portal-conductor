@@ -374,3 +374,45 @@ def parse_group_attributes(group_result):
         "samba_sid": decode_ldap_str_attr(group_attrs, 'sambaSID'),
         "object_classes": decode_ldap_list_attr(group_attrs, 'objectClass')
     }
+
+
+def modify_user_attribute(conn, base_dn, username, attribute, value):
+    """
+    Modify a single attribute for a user in LDAP.
+
+    This function updates a user's LDAP attribute with a new value using
+    the MOD_REPLACE operation, which replaces the existing value(s) with
+    the new value.
+
+    Args:
+        conn: LDAP connection object
+        base_dn: LDAP base distinguished name
+        username: Username to modify
+        attribute: LDAP attribute name to modify (e.g., 'mail', 'givenName', 'sn', 'cn')
+        value: New value for the attribute
+
+    Returns:
+        LDAP modify result
+
+    Raises:
+        ldap.LDAPError: If the LDAP modification fails
+        ValueError: If value is empty
+    """
+    if not value:
+        raise ValueError(f"Value cannot be empty for attribute '{attribute}'")
+
+    # Encode value to bytes for LDAP
+    encoded_value = value.encode("UTF-8") if isinstance(value, str) else value
+
+    mod_attrs = [
+        (
+            ldap.MOD_REPLACE,
+            attribute,
+            [encoded_value],
+        ),
+    ]
+
+    return conn.modify_s(
+        f"uid={username},ou=People,{base_dn}",
+        mod_attrs,
+    )
