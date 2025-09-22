@@ -2,7 +2,7 @@
 Authentication module for Portal Conductor.
 
 This module provides HTTP Basic Authentication support for all API endpoints.
-Credentials are configured via the config file and passwords are stored as bcrypt hashes.
+Credentials are configured via the config file using plaintext passwords.
 """
 
 import secrets
@@ -10,43 +10,29 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from passlib.context import CryptContext
 
 from handlers import dependencies
 
 
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Basic Auth security scheme
 security = HTTPBasic()
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+def verify_password(plain_password: str, configured_password: str) -> bool:
     """
-    Verify a plain password against a hashed password.
+    Verify a plain password against the configured password.
 
     Args:
         plain_password: The plain text password
-        hashed_password: The bcrypt hashed password
+        configured_password: The configured plain text password
 
     Returns:
         bool: True if password matches, False otherwise
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    return secrets.compare_digest(plain_password, configured_password)
 
 
-def get_password_hash(password: str) -> str:
-    """
-    Hash a password using bcrypt.
-
-    Args:
-        password: Plain text password
-
-    Returns:
-        str: Bcrypt hashed password
-    """
-    return pwd_context.hash(password)
 
 
 def authenticate_user(username: str, password: str) -> bool:
@@ -69,17 +55,17 @@ def authenticate_user(username: str, password: str) -> bool:
 
     # Get configured credentials
     configured_username = auth_config.get("username")
-    configured_password_hash = auth_config.get("password")
+    configured_password = auth_config.get("password")
 
     # Check if credentials are configured
-    if not configured_username or not configured_password_hash:
+    if not configured_username or not configured_password:
         return False
 
     # Check username match (constant time comparison)
     username_match = secrets.compare_digest(username, configured_username)
 
     # Check password match
-    password_match = verify_password(password, configured_password_hash)
+    password_match = verify_password(password, configured_password)
 
     return username_match and password_match
 
@@ -143,28 +129,5 @@ AuthDep = Annotated[str, Depends(get_current_user)]
 OptionalAuthDep = Annotated[str | None, Depends(get_optional_user)]
 
 
-def generate_password_hash(plain_password: str) -> None:
-    """
-    Utility function to generate a password hash for configuration.
-
-    This is a helper function for administrators to generate bcrypt hashes
-    for the configuration file.
-
-    Args:
-        plain_password: The plain text password to hash
-    """
-    hashed = get_password_hash(plain_password)
-    print(f"Bcrypt hash for '{plain_password}': {hashed}")
 
 
-if __name__ == "__main__":
-    # Allow running this module directly to generate password hashes
-    import sys
-
-    if len(sys.argv) != 2:
-        print("Usage: python -m handlers.auth <password>")
-        print("Generates a bcrypt hash for the given password")
-        sys.exit(1)
-
-    password = sys.argv[1]
-    generate_password_hash(password)

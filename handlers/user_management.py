@@ -9,6 +9,7 @@ import sys
 import traceback
 
 from fastapi import APIRouter, HTTPException
+import ldap
 
 import kinds
 import portal_ldap
@@ -76,6 +77,47 @@ def add_user(user: kinds.CreateUserRequest, current_user: AuthDep):
         print(f"Exception type: {type(e).__name__}", file=sys.stderr)
         print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
         raise HTTPException(status_code=500, detail=f"User creation failed: {str(e)}")
+
+
+@router.post("/{username}/validate", status_code=200)
+def validate_credentials(username: str, request: kinds.PasswordChangeRequest, current_user: AuthDep):
+    """
+    Validate user credentials against LDAP.
+
+    This endpoint validates if the provided username and password combination
+    is correct according to LDAP authentication.
+
+    Args:
+        username: The username to validate
+        request: The password to validate
+
+    Returns:
+        dict: {"valid": True/False}
+
+    Raises:
+        HTTPException: If validation fails due to system errors
+    """
+    ldap_conn = dependencies.get_ldap_conn()
+    ldap_base_dn = dependencies.get_ldap_base_dn()
+
+    try:
+        # Get user DN for binding
+        user_dn = portal_ldap.get_user_dn(ldap_conn, ldap_base_dn, username)
+        if not user_dn:
+            return {"valid": False}
+
+        # Try to bind with user credentials to validate password
+        ldap_url = dependencies.get_ldap_url()
+        test_conn = ldap.initialize(ldap_url)
+        test_conn.simple_bind_s(user_dn, request.password)
+        test_conn.unbind()
+
+        return {"valid": True}
+    except ldap.INVALID_CREDENTIALS:
+        return {"valid": False}
+    except Exception as e:
+        print(f"LDAP validation error for {username}: {str(e)}", file=sys.stderr)
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
 
 
 @router.post("/{username}/password", status_code=200, response_model=kinds.UserResponse)
