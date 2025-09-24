@@ -40,5 +40,14 @@
     "enabled": false,
     "url": "http://your-mailman-server/",
     "password": "your-mailman-password"
+  },
+  "smtp": {
+    "host": "your-smtp-server.com",
+    "port": 587,
+    "user": "your-smtp-username",
+    "password": "your-smtp-password",
+    "use_tls": true,
+    "use_ssl": false,
+    "from": "noreply@yourdomain.com"
   }
 }

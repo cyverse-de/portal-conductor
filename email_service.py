@@ -2,20 +2,32 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
+
+from handlers import dependencies
 
 
 class EmailService:
-    def __init__(self):
-        # Default to exim container configuration (same pod, localhost:25)
-        self.smtp_host = os.environ.get("SMTP_HOST", "localhost")
-        self.smtp_port = int(os.environ.get("SMTP_PORT", "25"))
-        self.smtp_user = os.environ.get("SMTP_USER", "")
-        self.smtp_password = os.environ.get("SMTP_PASSWORD", "")
-        # Exim container doesn't require TLS/SSL for local communication
-        self.use_tls = os.environ.get("SMTP_USE_TLS", "false").lower() in ["1", "true", "yes"]
-        self.use_ssl = os.environ.get("SMTP_USE_SSL", "false").lower() in ["1", "true", "yes"]
-        self.default_from = os.environ.get("SMTP_FROM", "noreply@cyverse.org")
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        # Load SMTP configuration from config.json first, then fall back to environment variables
+        if config:
+            smtp_config = config.get("smtp", {})
+        else:
+            # Try to get config from dependencies if not provided directly
+            try:
+                config = dependencies.get_config()
+                smtp_config = config.get("smtp", {}) if config else {}
+            except:
+                smtp_config = {}
+
+        # SMTP server configuration with config.json priority, env variable fallback
+        self.smtp_host = smtp_config.get("host", os.environ.get("SMTP_HOST", "localhost"))
+        self.smtp_port = int(smtp_config.get("port", os.environ.get("SMTP_PORT", "25")))
+        self.smtp_user = smtp_config.get("user", os.environ.get("SMTP_USER", ""))
+        self.smtp_password = smtp_config.get("password", os.environ.get("SMTP_PASSWORD", ""))
+        self.use_tls = smtp_config.get("use_tls", os.environ.get("SMTP_USE_TLS", "false").lower() in ["1", "true", "yes"])
+        self.use_ssl = smtp_config.get("use_ssl", os.environ.get("SMTP_USE_SSL", "false").lower() in ["1", "true", "yes"])
+        self.default_from = smtp_config.get("from", os.environ.get("SMTP_FROM", "noreply@cyverse.org"))
 
     def send_email(
         self,

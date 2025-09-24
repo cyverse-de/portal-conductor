@@ -177,7 +177,7 @@ terrain_api = terrain.Terrain(
     api_url=terrain_url, username=terrain_user, password=terrain_password
 )
 email_api = mailman.Mailman(api_url=mailman_url, password=mailman_password)
-smtp_service = email_service.EmailService()
+smtp_service = email_service.EmailService(config)
 
 # Initialize dependencies for handlers
 dependencies.init_dependencies(

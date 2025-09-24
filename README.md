@@ -138,6 +138,15 @@ The `config.template.json` file contains all required configuration sections wit
     "enabled": false,
     "url": "http://your-mailman-server/",
     "password": "your-mailman-password"
+  },
+  "smtp": {
+    "host": "your-smtp-server.com",
+    "port": 587,
+    "user": "your-smtp-username",
+    "password": "your-smtp-password",
+    "use_tls": true,
+    "use_ssl": false,
+    "from": "noreply@yourdomain.com"
   }
 }
 ```
@@ -156,9 +165,49 @@ export IRODS_USER=your-irods-admin
 export TERRAIN_URL=http://your-terrain-server/
 export AUTH_USERNAME=admin
 export AUTH_PASSWORD="$2b$12$..."
+export SMTP_HOST=your-smtp-server.com
+export SMTP_PORT=587
+export SMTP_USER=your-smtp-username
+export SMTP_PASSWORD=your-smtp-password
+export SMTP_USE_TLS=true
+export SMTP_FROM=noreply@yourdomain.com
 ```
 
 **Note**: The JSON configuration file takes precedence over environment variables.
+
+### SMTP Configuration
+
+Portal Conductor supports sending emails through external SMTP servers. Configure SMTP settings in the `smtp` section of your config.json:
+
+```json
+{
+  "smtp": {
+    "host": "your-smtp-server.com",
+    "port": 587,
+    "user": "your-smtp-username",
+    "password": "your-smtp-password",
+    "use_tls": true,
+    "use_ssl": false,
+    "from": "noreply@yourdomain.com"
+  }
+}
+```
+
+**SMTP Options:**
+- `host`: SMTP server hostname
+- `port`: SMTP server port (587 for STARTTLS, 465 for SSL, 25 for plain)
+- `user`: SMTP authentication username
+- `password`: SMTP authentication password
+- `use_tls`: Enable STARTTLS encryption (recommended for port 587)
+- `use_ssl`: Enable SSL encryption (for port 465)
+- `from`: Default sender address for outgoing emails
+
+**Common SMTP Configurations:**
+- **STARTTLS (Port 587)**: Set `use_tls: true, use_ssl: false`
+- **SSL (Port 465)**: Set `use_tls: false, use_ssl: true`
+- **Plain (Port 25)**: Set `use_tls: false, use_ssl: false` (not recommended for production)
+
+If your SMTP server supports DKIM signing, it will be handled automatically by the server when emails are sent.
 
 ## Authentication
 
