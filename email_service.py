@@ -1,42 +1,31 @@
-import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Optional, List, Dict, Any
-
-from handlers import dependencies
+from typing import List, Dict, Any
 
 
 class EmailService:
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
-        # Load SMTP configuration from config.json first, then fall back to environment variables
-        if config:
-            smtp_config = config.get("smtp", {})
-        else:
-            # Try to get config from dependencies if not provided directly
-            try:
-                config = dependencies.get_config()
-                smtp_config = config.get("smtp", {}) if config else {}
-            except:
-                smtp_config = {}
+    def __init__(self, config: Dict[str, Any]):
+        # Load SMTP configuration from config.json
+        smtp_config = config.get("smtp", {})
 
-        # SMTP server configuration with config.json priority, env variable fallback
-        self.smtp_host = smtp_config.get("host", os.environ.get("SMTP_HOST", "localhost"))
-        self.smtp_port = int(smtp_config.get("port", os.environ.get("SMTP_PORT", "25")))
-        self.smtp_user = smtp_config.get("user", os.environ.get("SMTP_USER", ""))
-        self.smtp_password = smtp_config.get("password", os.environ.get("SMTP_PASSWORD", ""))
-        self.use_tls = smtp_config.get("use_tls", os.environ.get("SMTP_USE_TLS", "false").lower() in ["1", "true", "yes"])
-        self.use_ssl = smtp_config.get("use_ssl", os.environ.get("SMTP_USE_SSL", "false").lower() in ["1", "true", "yes"])
-        self.default_from = smtp_config.get("from", os.environ.get("SMTP_FROM", "noreply@cyverse.org"))
+        # SMTP server configuration from config.json
+        self.smtp_host = smtp_config.get("host", "localhost")
+        self.smtp_port = int(smtp_config.get("port", 25))
+        self.smtp_user = smtp_config.get("user", "")
+        self.smtp_password = smtp_config.get("password", "")
+        self.use_tls = smtp_config.get("use_tls", False)
+        self.use_ssl = smtp_config.get("use_ssl", False)
+        self.default_from = smtp_config.get("from", "noreply@cyverse.org")
 
     def send_email(
         self,
         to: str | List[str],
         subject: str,
-        text_body: Optional[str] = None,
-        html_body: Optional[str] = None,
-        from_email: Optional[str] = None,
-        bcc: Optional[str | List[str]] = None,
+        text_body: str | None = None,
+        html_body: str | None = None,
+        from_email: str | None = None,
+        bcc: str | List[str] | None = None,
     ) -> bool:
         """
         Send an email using SMTP.
