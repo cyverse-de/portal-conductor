@@ -152,11 +152,10 @@ def change_password(username: str, request: kinds.PasswordChangeRequest, current
 @router.delete("/{username}", status_code=200, response_model=kinds.UserResponse)
 def delete_user(username: str, current_user: AuthDep):
     """
-    Delete a user account from LDAP.
+    Delete a user account from all systems.
 
-    Removes the user from all groups they belong to and then deletes
-    the user account from LDAP. Note: This does not delete the user's
-    data store account or files.
+    Removes the user from all groups they belong to, deletes the user account
+    from LDAP, and deletes the user's datastore account and files.
 
     Args:
         username: The username to delete
@@ -169,16 +168,44 @@ def delete_user(username: str, current_user: AuthDep):
     """
     ldap_conn = dependencies.get_ldap_conn()
     ldap_base_dn = dependencies.get_ldap_base_dn()
+    ds_api = dependencies.get_ds_api()
 
-    print(f"Deleting LDAP user: {username}")
-    user_groups = portal_ldap.get_user_groups(ldap_conn, ldap_base_dn, username)
-    print(f"User {username} is in groups: {user_groups}", file=sys.stderr)
-    for ug in user_groups:
-        group_name = ug[1]["cn"][0]
-        print(f"Removing user {username} from group {group_name}", file=sys.stderr)
-        portal_ldap.remove_user_from_group(ldap_conn, ldap_base_dn, username, group_name)
-        print(f"Removed user {username} from group {group_name}", file=sys.stderr)
-    print(f"Deleting user {username} from LDAP", file=sys.stderr)
-    portal_ldap.delete_user(ldap_conn, ldap_base_dn, username)
-    print(f"Deleted LDAP user: {username}", file=sys.stderr)
-    return {"user": username}
+    try:
+        # Delete from datastore first (files and account)
+        print(f"Deleting datastore files and account for user: {username}", file=sys.stderr)
+        if ds_api.user_exists(username):
+            ds_api.delete_home(username)
+            print(f"Deleted home directory for user: {username}", file=sys.stderr)
+            ds_api.delete_user(username)
+            print(f"Deleted datastore user: {username}", file=sys.stderr)
+        else:
+            print(f"User {username} does not exist in datastore, skipping datastore deletion", file=sys.stderr)
+
+        # Check if user exists in LDAP before attempting deletion
+        print(f"Checking if user {username} exists in LDAP", file=sys.stderr)
+        existing_user = portal_ldap.get_user(ldap_conn, ldap_base_dn, username)
+        if existing_user and len(existing_user) > 0:
+            # Remove from LDAP groups
+            print(f"Deleting LDAP user: {username}", file=sys.stderr)
+            user_groups = portal_ldap.get_user_groups(ldap_conn, ldap_base_dn, username)
+            print(f"User {username} is in groups: {user_groups}", file=sys.stderr)
+            for ug in user_groups:
+                group_name = ug[1]["cn"][0].decode('utf-8') if isinstance(ug[1]["cn"][0], bytes) else ug[1]["cn"][0]
+                print(f"Removing user {username} from group {group_name}", file=sys.stderr)
+                portal_ldap.remove_user_from_group(ldap_conn, ldap_base_dn, username, group_name)
+                print(f"Removed user {username} from group {group_name}", file=sys.stderr)
+
+            # Delete from LDAP
+            print(f"Deleting user {username} from LDAP", file=sys.stderr)
+            portal_ldap.delete_user(ldap_conn, ldap_base_dn, username)
+            print(f"Deleted LDAP user: {username}", file=sys.stderr)
+        else:
+            print(f"User {username} does not exist in LDAP, skipping LDAP deletion", file=sys.stderr)
+
+        return {"user": username}
+
+    except Exception as e:
+        print(f"User deletion failed for {username}: {str(e)}", file=sys.stderr)
+        print(f"Exception type: {type(e).__name__}", file=sys.stderr)
+        print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
+        raise HTTPException(status_code=500, detail=f"User deletion failed: {str(e)}")

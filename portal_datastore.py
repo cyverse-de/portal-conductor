@@ -98,7 +98,34 @@ class DataStore(object):
     def delete_home(self, username: str) -> None:
         homedir = self.user_home(username)
         if self.session.collections.exists(homedir):
-            self.session.collections.remove(homedir, force=True, recurse=True)
+            try:
+                # Try normal recursive delete first
+                self.session.collections.remove(homedir, force=True, recurse=True)
+            except Exception as e:
+                # If it fails with CANT_RM_NON_EMPTY_HOME_COLL, manually delete contents
+                if "CANT_RM_NON_EMPTY_HOME_COLL" in str(type(e).__name__):
+                    print(f"Home directory protection triggered, manually deleting contents of {homedir}", file=sys.stderr)
+                    self._recursive_delete_contents(homedir)
+                    # Now delete the empty home directory
+                    self.session.collections.remove(homedir)
+                else:
+                    raise
+
+    def _recursive_delete_contents(self, collection_path: str) -> None:
+        """Recursively delete all contents of a collection without deleting the collection itself."""
+        coll = self.session.collections.get(collection_path)
+
+        # Delete all data objects (files) in this collection
+        for data_obj in coll.data_objects:
+            print(f"Deleting file: {data_obj.path}", file=sys.stderr)
+            self.session.data_objects.unlink(data_obj.path, force=True)
+
+        # Recursively delete all subcollections
+        for subcoll in coll.subcollections:
+            subcoll_path = f"{collection_path}/{subcoll.name}"
+            print(f"Deleting subcollection: {subcoll_path}", file=sys.stderr)
+            self._recursive_delete_contents(subcoll_path)
+            self.session.collections.remove(subcoll_path, force=True)
 
     def change_password(self, username: str, new_password: str) -> None:
         try:
