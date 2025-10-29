@@ -14,6 +14,7 @@ _ds_api: Any = None
 _terrain_api: Any = None
 _email_api: Any = None
 _smtp_service: Any = None
+_formation_api: Any = None
 
 # Configuration values
 _ldap_community_group = None
@@ -35,6 +36,9 @@ _irods_port = None
 _irods_user = None
 _irods_password = None
 _irods_zone = None
+_formation_app_id = None
+_formation_app_name = None
+_formation_system_id = None
 
 
 def init_dependencies(
@@ -63,13 +67,18 @@ def init_dependencies(
     irods_user,
     irods_password,
     irods_zone,
+    formation_api,
+    formation_app_id,
+    formation_app_name,
+    formation_system_id,
 ):
     """Initialize all dependencies. Called by main.py after setup."""
-    global _config, _ldap_conn, _ds_api, _terrain_api, _email_api, _smtp_service
+    global _config, _ldap_conn, _ds_api, _terrain_api, _email_api, _smtp_service, _formation_api
     global _ldap_community_group, _ldap_everyone_group, _ipcservices_user, _ds_admin_user
     global _terrain_url, _terrain_user, _terrain_password, _mailman_enabled, _mailman_url, _mailman_password
     global _ldap_url, _ldap_user, _ldap_password, _ldap_base_dn
     global _irods_host, _irods_port, _irods_user, _irods_password, _irods_zone
+    global _formation_app_id, _formation_app_name, _formation_system_id
 
     _config = config
     _ldap_conn = ldap_conn
@@ -96,6 +105,10 @@ def init_dependencies(
     _irods_user = irods_user
     _irods_password = irods_password
     _irods_zone = irods_zone
+    _formation_api = formation_api
+    _formation_app_id = formation_app_id
+    _formation_app_name = formation_app_name
+    _formation_system_id = formation_system_id
 
 
 # Getter functions for accessing dependencies
@@ -197,3 +210,19 @@ def get_irods_password():
 
 def get_irods_zone():
     return _irods_zone
+
+
+def get_formation_api():
+    return _formation_api
+
+
+def get_formation_app_id():
+    return _formation_app_id
+
+
+def get_formation_app_name():
+    return _formation_app_name
+
+
+def get_formation_system_id():
+    return _formation_system_id

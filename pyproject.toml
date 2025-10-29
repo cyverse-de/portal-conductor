@@ -10,6 +10,8 @@ dependencies = [
     "python-ldap>=3.4.4",
     "python-irodsclient>=3.1.1",
     "passlib[bcrypt]>=1.7.4",
+    "pyjwt>=2.8.0",
+    "psycopg2-binary>=2.9.9",
 ]
 
 [project.optional-dependencies]

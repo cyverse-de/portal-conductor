@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import email_service
+import formation
 import mailman
 import portal_datastore
 import portal_ldap
@@ -63,6 +64,18 @@ def load_config():
             "enabled": os.environ.get("MAILMAN_ENABLED", "false").lower() in ["1", "true", "yes"],
             "url": os.environ.get("MAILMAN_URL", ""),
             "password": os.environ.get("MAILMAN_PASSWORD", "")
+        },
+        "formation": {
+            "base_url": os.environ.get("FORMATION_URL", ""),
+            "keycloak": {
+                "server_url": os.environ.get("KEYCLOAK_SERVER_URL", ""),
+                "realm": os.environ.get("KEYCLOAK_REALM", ""),
+                "client_id": os.environ.get("KEYCLOAK_CLIENT_ID", ""),
+                "client_secret": os.environ.get("KEYCLOAK_CLIENT_SECRET", "")
+            },
+            "user_deletion_app_id": os.environ.get("FORMATION_USER_DELETION_APP_ID", ""),
+            "user_deletion_app_name": os.environ.get("FORMATION_USER_DELETION_APP_NAME", "portal-delete-user"),
+            "system_id": os.environ.get("FORMATION_SYSTEM_ID", "de")
         }
     }
 
@@ -168,6 +181,16 @@ irods_port = config["irods"]["port"]
 irods_user = config["irods"]["user"]
 irods_password = config["irods"]["password"]
 irods_zone = config["irods"]["zone"]
+formation_config = config.get("formation", {})
+formation_base_url = formation_config.get("base_url", "")
+formation_keycloak_config = formation_config.get("keycloak", {})
+formation_keycloak_url = formation_keycloak_config.get("server_url", "")
+formation_keycloak_realm = formation_keycloak_config.get("realm", "")
+formation_keycloak_client_id = formation_keycloak_config.get("client_id", "")
+formation_keycloak_client_secret = formation_keycloak_config.get("client_secret", "")
+formation_app_id = formation_config.get("user_deletion_app_id", "")
+formation_app_name = formation_config.get("user_deletion_app_name", "portal-delete-user")
+formation_system_id = formation_config.get("system_id", "de")
 
 
 # Initialize direct connections
@@ -178,6 +201,17 @@ terrain_api = terrain.Terrain(
 )
 email_api = mailman.Mailman(api_url=mailman_url, password=mailman_password)
 smtp_service = email_service.EmailService(config)
+formation_api = None
+if (formation_base_url and formation_keycloak_url and
+    formation_keycloak_realm and formation_keycloak_client_id and
+    formation_keycloak_client_secret):
+    formation_api = formation.Formation(
+        api_url=formation_base_url,
+        keycloak_url=formation_keycloak_url,
+        realm=formation_keycloak_realm,
+        client_id=formation_keycloak_client_id,
+        client_secret=formation_keycloak_client_secret,
+    )
 
 # Initialize dependencies for handlers
 dependencies.init_dependencies(
@@ -206,6 +240,10 @@ dependencies.init_dependencies(
     irods_user=irods_user,
     irods_password=irods_password,
     irods_zone=irods_zone,
+    formation_api=formation_api,
+    formation_app_id=formation_app_id,
+    formation_app_name=formation_app_name,
+    formation_system_id=formation_system_id,
 )
 
 
@@ -223,6 +261,7 @@ def greeting():
 
 # Register all handler routers
 app.include_router(user_management.router)
+app.include_router(user_management.async_router)
 app.include_router(ldap_management.router)
 app.include_router(email_management.router)
 app.include_router(mailing_list_management.router)

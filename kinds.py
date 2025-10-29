@@ -33,6 +33,19 @@ class UserResponse(BaseModel):
     user: str
 
 
+class AsyncDeleteUserResponse(BaseModel):
+    user: str
+    analysis_id: str
+    status: str
+
+
+class AnalysisStatusResponse(BaseModel):
+    analysis_id: str
+    status: str
+    url_ready: bool | None = None
+    url: str | None = None
+
+
 class EmailListResponse(BaseModel):
     list: str
     email: str
