@@ -6,12 +6,15 @@ WORKDIR /app
 
 ENV UV_LINK_MODE=copy
 
-# Install system dependencies
-RUN apt update -y 
-RUN apt install -y --no-install-recommends libsasl2-dev
-RUN apt install -y --no-install-recommends python3-dev 
-RUN apt install -y --no-install-recommends libldap2-dev 
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+# Install system dependencies required for python-ldap and python-irodsclient
+RUN apt update -y && \
+    apt install -y --no-install-recommends \
+        build-essential \
+        libsasl2-dev \
+        python3-dev \
+        libldap2-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy dependency files first for better caching
 COPY uv.lock pyproject.toml ./
