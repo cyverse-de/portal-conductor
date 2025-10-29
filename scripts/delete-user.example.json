@@ -1,0 +1,27 @@
+{
+  "ldap": {
+    "url": "ldap://ldap.example.com:389",
+    "user": "cn=admin,dc=example,dc=com",
+    "password": "your-ldap-password",
+    "base_dn": "dc=example,dc=com"
+  },
+  "irods": {
+    "host": "irods.example.com",
+    "port": "1247",
+    "user": "rods",
+    "password": "your-irods-password",
+    "zone": "iplant"
+  },
+  "portal_db": {
+    "host": "portal-db.example.com",
+    "port": "5432",
+    "name": "portal_database",
+    "user": "portal_user",
+    "password": "your-portal-db-password"
+  },
+  "mailman": {
+    "enabled": true,
+    "url": "https://mailman.example.com",
+    "password": "your-mailman-admin-password"
+  }
+}
