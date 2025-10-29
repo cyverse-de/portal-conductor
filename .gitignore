@@ -12,6 +12,7 @@ wheels/
 config.json
 portal2.json
 qa.conf
+portal-delete-user.json
 .clj-kondo/
 .coverage
 .lsp/ 
