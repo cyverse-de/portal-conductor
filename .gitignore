@@ -10,6 +10,8 @@ wheels/
 .venv
 
 config.json
+portal2.json
+qa.conf
 .clj-kondo/
 .coverage
 .lsp/ 
