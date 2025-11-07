@@ -15,6 +15,29 @@ from handlers.auth import AuthDep
 router = APIRouter(prefix="/ldap", tags=["LDAP Management"])
 
 
+def _get_ldap_context():
+    """
+    Get common LDAP dependencies.
+
+    Returns:
+        tuple: A tuple containing (ldap_conn, ldap_base_dn).
+    """
+    return dependencies.get_ldap_conn(), dependencies.get_ldap_base_dn()
+
+
+def _extract_group_names(groups_result):
+    """
+    Extract group names from LDAP group results.
+
+    Args:
+        groups_result: LDAP group query results.
+
+    Returns:
+        list[str]: List of group names.
+    """
+    return [g[1]["cn"][0] for g in groups_result]
+
+
 @router.post("/users", status_code=200, response_model=kinds.UserResponse)
 def create_ldap_user(user: kinds.CreateUserRequest, current_user: AuthDep):
     """
@@ -61,24 +84,18 @@ def create_ldap_user(user: kinds.CreateUserRequest, current_user: AuthDep):
         - Automatically adds to configured everyone and community groups
         - Sets standard shadow password policy attributes
     """
-    ldap_conn = dependencies.get_ldap_conn()
-    ldap_base_dn = dependencies.get_ldap_base_dn()
+    ldap_conn, ldap_base_dn = _get_ldap_context()
     ldap_everyone_group = dependencies.get_ldap_everyone_group()
     ldap_community_group = dependencies.get_ldap_community_group()
 
-    try:
-        portal_ldap.create_ldap_user_with_groups(
-            ldap_conn,
-            ldap_base_dn,
-            user,
-            everyone_group=ldap_everyone_group,
-            community_group=ldap_community_group
-        )
-        return {"user": user.username}
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to create LDAP user: {str(e)}"
-        )
+    portal_ldap.create_ldap_user_with_groups(
+        ldap_conn,
+        ldap_base_dn,
+        user,
+        everyone_group=ldap_everyone_group,
+        community_group=ldap_community_group
+    )
+    return {"user": user.username}
 
 
 @router.post("/users/{username}/groups/{groupname}", status_code=200, response_model=kinds.GenericResponse)
@@ -96,29 +113,22 @@ def add_user_to_ldap_group(username: str, groupname: str, current_user: AuthDep)
     Raises:
         HTTPException: If operation fails
     """
-    ldap_conn = dependencies.get_ldap_conn()
-    ldap_base_dn = dependencies.get_ldap_base_dn()
+    ldap_conn, ldap_base_dn = _get_ldap_context()
 
-    try:
-        # Check if user is already in group
-        user_groups = list(
-            map(lambda g: g[1]["cn"][0], portal_ldap.get_user_groups(ldap_conn, ldap_base_dn, username))
-        )
-        if groupname not in user_groups:
-            portal_ldap.add_user_to_group(ldap_conn, ldap_base_dn, username, groupname)
-            return {
-                "success": True,
-                "message": f"User {username} added to group {groupname}",
-            }
-        else:
-            return {
-                "success": True,
-                "message": f"User {username} already in group {groupname}",
-            }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to add user to LDAP group: {str(e)}"
-        )
+    # Check if user is already in group
+    user_groups = _extract_group_names(portal_ldap.get_user_groups(ldap_conn, ldap_base_dn, username))
+
+    if groupname not in user_groups:
+        portal_ldap.add_user_to_group(ldap_conn, ldap_base_dn, username, groupname)
+        return {
+            "success": True,
+            "message": f"User {username} added to group {groupname}",
+        }
+    else:
+        return {
+            "success": True,
+            "message": f"User {username} already in group {groupname}",
+        }
 
 
 @router.get("/users/{username}/groups", status_code=200, response_model=list[str])
@@ -135,18 +145,8 @@ def get_user_ldap_groups(username: str, current_user: AuthDep):
     Raises:
         HTTPException: If operation fails
     """
-    ldap_conn = dependencies.get_ldap_conn()
-    ldap_base_dn = dependencies.get_ldap_base_dn()
-
-    try:
-        user_groups = list(
-            map(lambda g: g[1]["cn"][0], portal_ldap.get_user_groups(ldap_conn, ldap_base_dn, username))
-        )
-        return user_groups
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get user LDAP groups: {str(e)}"
-        )
+    ldap_conn, ldap_base_dn = _get_ldap_context()
+    return _extract_group_names(portal_ldap.get_user_groups(ldap_conn, ldap_base_dn, username))
 
 
 @router.delete("/users/{username}/groups/{groupname}", status_code=200, response_model=kinds.GenericResponse)
@@ -164,19 +164,13 @@ def remove_user_from_ldap_group(username: str, groupname: str, current_user: Aut
     Raises:
         HTTPException: If operation fails
     """
-    ldap_conn = dependencies.get_ldap_conn()
-    ldap_base_dn = dependencies.get_ldap_base_dn()
+    ldap_conn, ldap_base_dn = _get_ldap_context()
 
-    try:
-        portal_ldap.remove_user_from_group(ldap_conn, ldap_base_dn, username, groupname)
-        return {
-            "success": True,
-            "message": f"User {username} removed from group {groupname}",
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to remove user from LDAP group: {str(e)}"
-        )
+    portal_ldap.remove_user_from_group(ldap_conn, ldap_base_dn, username, groupname)
+    return {
+        "success": True,
+        "message": f"User {username} removed from group {groupname}",
+    }
 
 
 @router.get("/users/{username}", status_code=200, response_model=kinds.UserLDAPInfo)
@@ -230,53 +224,43 @@ def get_user_ldap_info(username: str, current_user: AuthDep):
             "object_classes": ["posixAccount", "shadowAccount", "inetOrgPerson"]
         }
     """
-    ldap_conn = dependencies.get_ldap_conn()
-    ldap_base_dn = dependencies.get_ldap_base_dn()
+    ldap_conn, ldap_base_dn = _get_ldap_context()
 
-    try:
-        user_result = portal_ldap.get_user(ldap_conn, ldap_base_dn, username)
+    user_result = portal_ldap.get_user(ldap_conn, ldap_base_dn, username)
 
-        if not user_result or len(user_result) == 0:
-            raise HTTPException(
-                status_code=404,
-                detail=f"User '{username}' not found in LDAP directory"
-            )
-
-        user_attrs = portal_ldap.parse_user_attributes(user_result)
-        if user_attrs is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Failed to parse LDAP attributes for user '{username}'"
-            )
-
-        return kinds.UserLDAPInfo(
-            username=username,
-            uid_number=user_attrs.get("uid_number"),
-            gid_number=user_attrs.get("gid_number"),
-            given_name=user_attrs.get("given_name"),
-            surname=user_attrs.get("surname"),
-            common_name=user_attrs.get("common_name"),
-            email=user_attrs.get("email"),
-            department=user_attrs.get("department"),
-            organization=user_attrs.get("organization"),
-            title=user_attrs.get("title"),
-            home_directory=user_attrs.get("home_directory"),
-            login_shell=user_attrs.get("login_shell"),
-            shadow_last_change=user_attrs.get("shadow_last_change"),
-            shadow_min=user_attrs.get("shadow_min"),
-            shadow_max=user_attrs.get("shadow_max"),
-            shadow_warning=user_attrs.get("shadow_warning"),
-            shadow_inactive=user_attrs.get("shadow_inactive"),
-            object_classes=user_attrs.get("object_classes")
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
+    if not user_result or len(user_result) == 0:
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve user LDAP information: {str(e)}"
+            status_code=404,
+            detail=f"User '{username}' not found in LDAP directory"
         )
+
+    user_attrs = portal_ldap.parse_user_attributes(user_result)
+    if user_attrs is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Failed to parse LDAP attributes for user '{username}'"
+        )
+
+    return kinds.UserLDAPInfo(
+        username=username,
+        uid_number=user_attrs.get("uid_number"),
+        gid_number=user_attrs.get("gid_number"),
+        given_name=user_attrs.get("given_name"),
+        surname=user_attrs.get("surname"),
+        common_name=user_attrs.get("common_name"),
+        email=user_attrs.get("email"),
+        department=user_attrs.get("department"),
+        organization=user_attrs.get("organization"),
+        title=user_attrs.get("title"),
+        home_directory=user_attrs.get("home_directory"),
+        login_shell=user_attrs.get("login_shell"),
+        shadow_last_change=user_attrs.get("shadow_last_change"),
+        shadow_min=user_attrs.get("shadow_min"),
+        shadow_max=user_attrs.get("shadow_max"),
+        shadow_warning=user_attrs.get("shadow_warning"),
+        shadow_inactive=user_attrs.get("shadow_inactive"),
+        object_classes=user_attrs.get("object_classes")
+    )
 
 
 @router.get("/groups", status_code=200, response_model=list[kinds.LDAPGroupInfo])
@@ -332,38 +316,30 @@ def get_ldap_groups(current_user: AuthDep):
             }
         ]
     """
-    ldap_conn = dependencies.get_ldap_conn()
-    ldap_base_dn = dependencies.get_ldap_base_dn()
+    ldap_conn, ldap_base_dn = _get_ldap_context()
 
-    try:
-        groups_result = portal_ldap.get_groups(ldap_conn, ldap_base_dn)
+    groups_result = portal_ldap.get_groups(ldap_conn, ldap_base_dn)
 
-        if not groups_result:
-            return []
+    if not groups_result:
+        return []
 
-        groups_list = []
-        for group_result in groups_result:
-            group_attrs = portal_ldap.parse_group_attributes(group_result)
-            if group_attrs and group_attrs.get("name"):
-                groups_list.append(kinds.LDAPGroupInfo(
-                    name=group_attrs["name"],
-                    gid_number=group_attrs.get("gid_number"),
-                    display_name=group_attrs.get("display_name"),
-                    description=group_attrs.get("description"),
-                    samba_group_type=group_attrs.get("samba_group_type"),
-                    samba_sid=group_attrs.get("samba_sid"),
-                    object_classes=group_attrs.get("object_classes")
-                ))
+    groups_list = []
+    for group_result in groups_result:
+        group_attrs = portal_ldap.parse_group_attributes(group_result)
+        if group_attrs and group_attrs.get("name"):
+            groups_list.append(kinds.LDAPGroupInfo(
+                name=group_attrs["name"],
+                gid_number=group_attrs.get("gid_number"),
+                display_name=group_attrs.get("display_name"),
+                description=group_attrs.get("description"),
+                samba_group_type=group_attrs.get("samba_group_type"),
+                samba_sid=group_attrs.get("samba_sid"),
+                object_classes=group_attrs.get("object_classes")
+            ))
 
-        # Sort groups by name for consistent ordering
-        groups_list.sort(key=lambda g: g.name.lower())
-        return groups_list
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve LDAP groups: {str(e)}"
-        )
+    # Sort groups by name for consistent ordering
+    groups_list.sort(key=lambda g: g.name.lower())
+    return groups_list
 
 
 @router.get("/users/{username}/exists", status_code=200, response_model=kinds.UserExistsResponse)
@@ -388,17 +364,11 @@ def check_user_exists_in_ldap(username: str, current_user: AuthDep):
         GET /ldap/users/john.doe/exists
         Returns: {"username": "john.doe", "exists": true}
     """
-    ldap_conn = dependencies.get_ldap_conn()
-    ldap_base_dn = dependencies.get_ldap_base_dn()
+    ldap_conn, ldap_base_dn = _get_ldap_context()
 
-    try:
-        user_result = portal_ldap.get_user(ldap_conn, ldap_base_dn, username)
-        exists = bool(user_result and len(user_result) > 0)
-        return kinds.UserExistsResponse(username=username, exists=exists)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to check user existence in LDAP: {str(e)}"
-        )
+    user_result = portal_ldap.get_user(ldap_conn, ldap_base_dn, username)
+    exists = bool(user_result and len(user_result) > 0)
+    return kinds.UserExistsResponse(username=username, exists=exists)
 
 
 @router.put("/users/{username}/attributes/{attribute}", status_code=200, response_model=kinds.GenericResponse)
@@ -436,32 +406,23 @@ def modify_user_ldap_attribute(username: str, attribute: str, request: kinds.Use
 
         Returns: {"success": true, "message": "Updated attribute 'mail' for user 'john.doe'"}
     """
-    ldap_conn = dependencies.get_ldap_conn()
-    ldap_base_dn = dependencies.get_ldap_base_dn()
+    ldap_conn, ldap_base_dn = _get_ldap_context()
 
-    try:
-        # First check if user exists
-        user_result = portal_ldap.get_user(ldap_conn, ldap_base_dn, username)
-        if not user_result or len(user_result) == 0:
-            raise HTTPException(
-                status_code=404,
-                detail=f"User '{username}' not found in LDAP directory"
-            )
-
-        # Modify the attribute
-        portal_ldap.modify_user_attribute(ldap_conn, ldap_base_dn, username, attribute, request.value)
-
-        return kinds.GenericResponse(
-            success=True,
-            message=f"Updated attribute '{attribute}' for user '{username}'"
+    # First check if user exists
+    user_result = portal_ldap.get_user(ldap_conn, ldap_base_dn, username)
+    if not user_result or len(user_result) == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"User '{username}' not found in LDAP directory"
         )
 
-    except HTTPException:
-        raise
+    # Modify the attribute
+    try:
+        portal_ldap.modify_user_attribute(ldap_conn, ldap_base_dn, username, attribute, request.value)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to modify LDAP attribute '{attribute}' for user '{username}': {str(e)}"
-        )
+
+    return kinds.GenericResponse(
+        success=True,
+        message=f"Updated attribute '{attribute}' for user '{username}'"
+    )

@@ -58,8 +58,11 @@
       "client_id": "portal-conductor-service",
       "client_secret": "your-client-secret-here"
     },
+    "_comment": "Specify EITHER user_deletion_app_id OR user_deletion_app_name. If only name is provided, the ID will be looked up automatically.",
     "user_deletion_app_id": "",
     "user_deletion_app_name": "portal-delete-user",
-    "system_id": "de"
+    "system_id": "de",
+    "verify_ssl": true,
+    "_verify_ssl_comment": "Set to false to disable SSL certificate verification for development/testing with self-signed certificates. Should be true in production."
   }
 }

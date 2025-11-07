@@ -1,7 +1,9 @@
 import json
 import os
 import sys
+import traceback
 
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -75,7 +77,8 @@ def load_config():
             },
             "user_deletion_app_id": os.environ.get("FORMATION_USER_DELETION_APP_ID", ""),
             "user_deletion_app_name": os.environ.get("FORMATION_USER_DELETION_APP_NAME", "portal-delete-user"),
-            "system_id": os.environ.get("FORMATION_SYSTEM_ID", "de")
+            "system_id": os.environ.get("FORMATION_SYSTEM_ID", "de"),
+            "verify_ssl": os.environ.get("FORMATION_VERIFY_SSL", "true").lower() in ["1", "true", "yes"]
         }
     }
 
@@ -97,7 +100,26 @@ auth_enabled = config.get("auth", {}).get("enabled", True)
 auth_realm = config.get("auth", {}).get("realm", "Portal Conductor API")
 
 # Configure API description based on auth status
-api_description = "API for managing user accounts, email lists, and service registrations in the CyVerse platform"
+api_description = """
+API for managing user accounts, email lists, and service registrations in the CyVerse platform.
+
+## Features
+
+- **User Management**: Create and manage LDAP users with group memberships
+- **DataStore Integration**: Set up iRODS users with permissions
+- **Terrain Integration**: Manage VICE job limits
+- **Mailing Lists**: Manage Mailman subscriptions
+- **Async Operations**: Formation-powered batch jobs for long-running operations
+
+## Async User Deletion
+
+For users with large home directories, use the async deletion endpoints under **Async Operations**:
+1. `DELETE /async/users/{username}` - Submit deletion job
+2. `GET /async/status/{analysis_id}` - Track job progress
+
+These endpoints use the Formation batch job service to handle operations that may take several minutes.
+"""
+
 if auth_enabled:
     api_description += "\n\n**Authentication Required**: This API uses HTTP Basic Authentication. Use the 'Authorize' button below to provide credentials."
 
@@ -114,17 +136,68 @@ app = FastAPI(
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(_: Request, exc: StarletteHTTPException):
+    """Handle standard HTTP exceptions."""
     print(exc, file=sys.stderr)
-    return JSONResponse(content={"detail": exc.detail}, status_code=exc.status_code)
+    return JSONResponse(
+        content={"detail": exc.detail},
+        status_code=exc.status_code
+    )
+
+
+@app.exception_handler(httpx.HTTPStatusError)
+async def httpx_exception_handler(_: Request, exc: httpx.HTTPStatusError):
+    """Handle HTTP errors from external services (Formation, etc.)."""
+    status_code = exc.response.status_code
+
+    # Log the error
+    print(
+        f"External API error: {status_code} - {exc.request.url}",
+        file=sys.stderr
+    )
+    try:
+        error_detail = exc.response.text
+        print(f"Response: {error_detail}", file=sys.stderr)
+    except Exception:
+        pass
+
+    # Pass through 404s, convert everything else to 502 (Bad Gateway)
+    if status_code == 404:
+        return JSONResponse(
+            content={"detail": "Resource not found in external service"},
+            status_code=404
+        )
+    return JSONResponse(
+        content={"detail": f"External service error: {status_code}"},
+        status_code=502
+    )
+
+
+@app.exception_handler(httpx.RequestError)
+async def httpx_request_error_handler(_: Request, exc: httpx.RequestError):
+    """Handle network/connection errors to external services."""
+    print(f"Request error: {exc}", file=sys.stderr)
+    return JSONResponse(
+        content={"detail": "Failed to connect to external service"},
+        status_code=503
+    )
 
 
 @app.middleware("http")
 async def exception_handling_middleware(request: Request, call_next):
+    """Middleware to handle all unhandled exceptions."""
     try:
         return await call_next(request)
     except Exception as e:
-        print(str(e), file=sys.stderr)
-        return JSONResponse(content=str(e), status_code=500)
+        # Log full traceback for unexpected errors
+        print(
+            f"Unhandled exception: {type(e).__name__}: {e}",
+            file=sys.stderr
+        )
+        print(traceback.format_exc(), file=sys.stderr)
+        return JSONResponse(
+            content={"detail": "Internal server error"},
+            status_code=500
+        )
 
 
 # Validate required configuration
@@ -191,6 +264,7 @@ formation_keycloak_client_secret = formation_keycloak_config.get("client_secret"
 formation_app_id = formation_config.get("user_deletion_app_id", "")
 formation_app_name = formation_config.get("user_deletion_app_name", "portal-delete-user")
 formation_system_id = formation_config.get("system_id", "de")
+formation_verify_ssl = formation_config.get("verify_ssl", True)
 
 
 # Initialize direct connections
@@ -211,7 +285,22 @@ if (formation_base_url and formation_keycloak_url and
         realm=formation_keycloak_realm,
         client_id=formation_keycloak_client_id,
         client_secret=formation_keycloak_client_secret,
+        verify_ssl=formation_verify_ssl,
     )
+
+    # Look up app ID by name at startup if only name is provided
+    if formation_api and not formation_app_id and formation_app_name:
+        print(f"Looking up Formation app ID for '{formation_app_name}' in system '{formation_system_id}'", file=sys.stderr)
+        try:
+            formation_app_id = formation_api.get_app_id_by_name(formation_system_id, formation_app_name)
+            if formation_app_id:
+                print(f"Found app ID: {formation_app_id}", file=sys.stderr)
+            else:
+                print(f"WARNING: Could not find app with name '{formation_app_name}' in system '{formation_system_id}'", file=sys.stderr)
+                print("User deletion will not work until app is created or app_id is configured", file=sys.stderr)
+        except Exception as e:
+            print(f"WARNING: Failed to lookup app ID for '{formation_app_name}': {e}", file=sys.stderr)
+            print("User deletion will not work until app is created or app_id is configured", file=sys.stderr)
 
 # Initialize dependencies for handlers
 dependencies.init_dependencies(

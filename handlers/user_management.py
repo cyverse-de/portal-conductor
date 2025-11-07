@@ -6,10 +6,9 @@ including creating, updating, and deleting user accounts.
 """
 
 import sys
-import traceback
 
-from fastapi import APIRouter, HTTPException
 import ldap
+from fastapi import APIRouter, HTTPException
 
 import kinds
 import portal_ldap
@@ -18,6 +17,155 @@ from handlers.auth import AuthDep
 
 router = APIRouter(prefix="/users", tags=["User Management"])
 async_router = APIRouter(prefix="/async", tags=["Async Operations"])
+
+
+def _ensure_formation_configured():
+    """
+    Ensure Formation API is configured.
+
+    Returns:
+        Formation: The configured Formation API instance.
+
+    Raises:
+        HTTPException: If Formation is not configured (503).
+    """
+    formation_api = dependencies.get_formation_api()
+    if not formation_api:
+        raise HTTPException(
+            status_code=503,
+            detail="Formation integration not configured."
+        )
+    return formation_api
+
+
+def _delete_user_from_datastore(ds_api, username: str) -> None:
+    """
+    Delete user from datastore if they exist.
+
+    Args:
+        ds_api: DataStore API instance.
+        username: Username to delete from datastore.
+    """
+    print(
+        f"Deleting datastore files and account for user: {username}",
+        file=sys.stderr
+    )
+    if ds_api.user_exists(username):
+        ds_api.delete_home(username)
+        print(
+            f"Deleted home directory for user: {username}",
+            file=sys.stderr
+        )
+        ds_api.delete_user(username)
+        print(f"Deleted datastore user: {username}", file=sys.stderr)
+    else:
+        print(
+            f"User {username} does not exist in datastore, "
+            f"skipping datastore deletion",
+            file=sys.stderr
+        )
+
+
+def _decode_group_name(group_cn) -> str:
+    """
+    Decode group name from LDAP result.
+
+    Args:
+        group_cn: Group CN value (bytes or str).
+
+    Returns:
+        str: Decoded group name.
+    """
+    return (
+        group_cn.decode('utf-8')
+        if isinstance(group_cn, bytes)
+        else group_cn
+    )
+
+
+def _delete_user_from_ldap(ldap_conn, ldap_base_dn: str, username: str) -> None:
+    """
+    Delete user from LDAP including removing from all groups.
+
+    Args:
+        ldap_conn: LDAP connection instance.
+        ldap_base_dn: LDAP base distinguished name.
+        username: Username to delete from LDAP.
+    """
+    print(f"Checking if user {username} exists in LDAP", file=sys.stderr)
+    existing_user = portal_ldap.get_user(ldap_conn, ldap_base_dn, username)
+
+    if not existing_user or len(existing_user) == 0:
+        print(
+            f"User {username} does not exist in LDAP, "
+            f"skipping LDAP deletion",
+            file=sys.stderr
+        )
+        return
+
+    # Remove from LDAP groups
+    print(f"Deleting LDAP user: {username}", file=sys.stderr)
+    user_groups = portal_ldap.get_user_groups(
+        ldap_conn, ldap_base_dn, username
+    )
+    print(
+        f"User {username} is in groups: {user_groups}",
+        file=sys.stderr
+    )
+
+    for ug in user_groups:
+        group_name = _decode_group_name(ug[1]["cn"][0])
+        print(
+            f"Removing user {username} from group {group_name}",
+            file=sys.stderr
+        )
+        portal_ldap.remove_user_from_group(
+            ldap_conn, ldap_base_dn, username, group_name
+        )
+        print(
+            f"Removed user {username} from group {group_name}",
+            file=sys.stderr
+        )
+
+    # Delete from LDAP
+    print(f"Deleting user {username} from LDAP", file=sys.stderr)
+    portal_ldap.delete_user(ldap_conn, ldap_base_dn, username)
+    print(f"Deleted LDAP user: {username}", file=sys.stderr)
+
+
+def _get_formation_app_first_param_id(
+    formation_api, system_id: str, app_id: str
+) -> str:
+    """
+    Get the first parameter ID from a Formation app configuration.
+
+    Args:
+        formation_api: Formation API instance.
+        system_id: Formation system ID (e.g., "de").
+        app_id: Formation app UUID.
+
+    Returns:
+        str: The first parameter ID from the app configuration.
+
+    Raises:
+        HTTPException: If parameter ID cannot be determined (500).
+    """
+    print(
+        f"Getting app parameters for {system_id}/{app_id}",
+        file=sys.stderr
+    )
+    app_params = formation_api.get_app_parameters(system_id, app_id)
+
+    # Extract first parameter ID (assuming single parameter for username)
+    if "groups" in app_params and len(app_params["groups"]) > 0:
+        for group in app_params["groups"]:
+            if "parameters" in group and len(group["parameters"]) > 0:
+                return group["parameters"][0]["id"]
+
+    raise HTTPException(
+        status_code=500,
+        detail="Could not determine parameter ID from app configuration"
+    )
 
 
 @router.post("/", status_code=200, response_model=kinds.UserResponse)
@@ -49,35 +197,28 @@ def add_user(user: kinds.CreateUserRequest, current_user: AuthDep):
     ipcservices_user = dependencies.get_ipcservices_user()
     ds_admin_user = dependencies.get_ds_admin_user()
 
-    try:
-        # Create LDAP user with groups (idempotent)
-        portal_ldap.create_ldap_user_with_groups(
-            ldap_conn,
-            ldap_base_dn,
-            user,
-            everyone_group=ldap_everyone_group,
-            community_group=ldap_community_group
-        )
+    # Create LDAP user with groups (idempotent)
+    portal_ldap.create_ldap_user_with_groups(
+        ldap_conn,
+        ldap_base_dn,
+        user,
+        everyone_group=ldap_everyone_group,
+        community_group=ldap_community_group
+    )
 
-        # Create DataStore user with permissions (mostly idempotent)
-        ds_api.create_datastore_user_with_permissions(
-            username=user.username,
-            password=user.password,
-            ipcservices_user=ipcservices_user,
-            ds_admin_user=ds_admin_user
-        )
+    # Create DataStore user with permissions (mostly idempotent)
+    ds_api.create_datastore_user_with_permissions(
+        username=user.username,
+        password=user.password,
+        ipcservices_user=ipcservices_user,
+        ds_admin_user=ds_admin_user
+    )
 
-        print(
-            f"User creation completed successfully for: {user.username}",
-            file=sys.stderr,
-        )
-        return {"user": user.username}
-
-    except Exception as e:
-        print(f"User creation failed for {user.username}: {str(e)}", file=sys.stderr)
-        print(f"Exception type: {type(e).__name__}", file=sys.stderr)
-        print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
-        raise HTTPException(status_code=500, detail=f"User creation failed: {str(e)}")
+    print(
+        f"User creation completed successfully for: {user.username}",
+        file=sys.stderr,
+    )
+    return {"user": user.username}
 
 
 @router.post("/{username}/validate", status_code=200)
@@ -116,9 +257,6 @@ def validate_credentials(username: str, request: kinds.PasswordChangeRequest, cu
         return {"valid": True}
     except ldap.INVALID_CREDENTIALS:
         return {"valid": False}
-    except Exception as e:
-        print(f"LDAP validation error for {username}: {str(e)}", file=sys.stderr)
-        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
 
 
 @router.post("/{username}/password", status_code=200, response_model=kinds.UserResponse)
@@ -171,212 +309,179 @@ def delete_user(username: str, current_user: AuthDep):
     ldap_base_dn = dependencies.get_ldap_base_dn()
     ds_api = dependencies.get_ds_api()
 
-    try:
-        # Delete from datastore first (files and account)
-        print(f"Deleting datastore files and account for user: {username}", file=sys.stderr)
-        if ds_api.user_exists(username):
-            ds_api.delete_home(username)
-            print(f"Deleted home directory for user: {username}", file=sys.stderr)
-            ds_api.delete_user(username)
-            print(f"Deleted datastore user: {username}", file=sys.stderr)
-        else:
-            print(f"User {username} does not exist in datastore, skipping datastore deletion", file=sys.stderr)
+    _delete_user_from_datastore(ds_api, username)
+    _delete_user_from_ldap(ldap_conn, ldap_base_dn, username)
 
-        # Check if user exists in LDAP before attempting deletion
-        print(f"Checking if user {username} exists in LDAP", file=sys.stderr)
-        existing_user = portal_ldap.get_user(ldap_conn, ldap_base_dn, username)
-        if existing_user and len(existing_user) > 0:
-            # Remove from LDAP groups
-            print(f"Deleting LDAP user: {username}", file=sys.stderr)
-            user_groups = portal_ldap.get_user_groups(ldap_conn, ldap_base_dn, username)
-            print(f"User {username} is in groups: {user_groups}", file=sys.stderr)
-            for ug in user_groups:
-                group_name = ug[1]["cn"][0].decode('utf-8') if isinstance(ug[1]["cn"][0], bytes) else ug[1]["cn"][0]
-                print(f"Removing user {username} from group {group_name}", file=sys.stderr)
-                portal_ldap.remove_user_from_group(ldap_conn, ldap_base_dn, username, group_name)
-                print(f"Removed user {username} from group {group_name}", file=sys.stderr)
-
-            # Delete from LDAP
-            print(f"Deleting user {username} from LDAP", file=sys.stderr)
-            portal_ldap.delete_user(ldap_conn, ldap_base_dn, username)
-            print(f"Deleted LDAP user: {username}", file=sys.stderr)
-        else:
-            print(f"User {username} does not exist in LDAP, skipping LDAP deletion", file=sys.stderr)
-
-        return {"user": username}
-
-    except Exception as e:
-        print(f"User deletion failed for {username}: {str(e)}", file=sys.stderr)
-        print(f"Exception type: {type(e).__name__}", file=sys.stderr)
-        print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
-        raise HTTPException(status_code=500, detail=f"User deletion failed: {str(e)}")
+    return {"user": username}
 
 
-@async_router.delete("/users/{username}", status_code=200, response_model=kinds.AsyncDeleteUserResponse)
+@async_router.delete(
+    "/users/{username}",
+    status_code=200,
+    response_model=kinds.AsyncDeleteUserResponse,
+    summary="Delete user asynchronously",
+    response_description="User deletion job submitted successfully"
+)
 def delete_user_async(username: str, current_user: AuthDep):
     """
-    Delete a user account asynchronously by submitting a deletion analysis.
+    Delete a user account asynchronously via Formation batch job.
 
-    This endpoint submits a batch analysis through the formation service to handle
-    long-running datastore deletion operations. It removes the user from LDAP groups
-    and accounts immediately, then returns an analysis ID for tracking the datastore
-    deletion progress.
+    This endpoint submits an async deletion job through the Formation service,
+    which runs the portal-delete-user app to perform all deletion operations.
+    This is ideal for users with large home directories where synchronous
+    deletion would timeout.
+
+    ## Deletion Operations Performed
+
+    The submitted job handles these operations in order:
+    1. **Mailing Lists**: Removes user from all subscribed mailing lists
+    2. **Datastore**: Deletes user's iRODS home directory and files (slow)
+    3. **LDAP**: Removes user from groups and deletes LDAP account
+    4. **Portal Database**: Removes user records from portal database
+
+    ## Formation Configuration
+
+    Configure the deletion app in `config.json`:
+    ```json
+    {
+      "formation": {
+        "user_deletion_app_id": "abc-123-def-456",  // Option 1: Direct ID
+        "user_deletion_app_name": "portal-delete-user",  // Option 2: App name
+        "system_id": "de"
+      }
+    }
+    ```
+
+    If using `user_deletion_app_name`, the app ID is automatically looked up
+    at startup (not per-request for performance).
+
+    ## Tracking Deletion Status
+
+    Use the returned `analysis_id` with the `GET /async/status/{analysis_id}`
+    endpoint to track the deletion job's progress.
 
     Args:
-        username: The username to delete
+        username: The username to delete (e.g., "john.doe")
 
     Returns:
-        AsyncDeleteUserResponse: Confirmation with username, analysis_id, and status
+        AsyncDeleteUserResponse: Contains username, analysis_id for tracking,
+        and initial status
 
     Raises:
-        HTTPException: If formation API is unavailable or analysis submission fails
+        HTTPException:
+            - 503: Formation service not configured or unavailable
+            - 500: App not configured or job submission failed
+            - 502: Formation API returned an error
+
+    Example:
+        ```
+        DELETE /async/users/john.doe
+        Response: {
+          "user": "john.doe",
+          "analysis_id": "abc-123-def-456",
+          "status": "Submitted"
+        }
+        ```
     """
     import time
-    import httpx
 
-    formation_api = dependencies.get_formation_api()
+    formation_api = _ensure_formation_configured()
     formation_app_id = dependencies.get_formation_app_id()
     formation_system_id = dependencies.get_formation_system_id()
-    ldap_conn = dependencies.get_ldap_conn()
-    ldap_base_dn = dependencies.get_ldap_base_dn()
 
-    # Check if formation is configured
-    if not formation_api:
-        raise HTTPException(
-            status_code=503,
-            detail="Formation integration not configured. Cannot submit async deletion."
-        )
-
+    # Validate that app_id was resolved (either configured directly or looked up at startup)
     if not formation_app_id:
         raise HTTPException(
             status_code=500,
-            detail="Formation user deletion app ID not configured."
+            detail="Formation user deletion app ID not configured. Check that either user_deletion_app_id is set or user_deletion_app_name refers to a valid app."
         )
 
-    try:
-        # Get app parameters to find the username parameter ID
-        print(f"Getting app parameters for {formation_system_id}/{formation_app_id}", file=sys.stderr)
-        app_params = formation_api.get_app_parameters(formation_system_id, formation_app_id)
+    # Get the first parameter ID from the app configuration
+    param_id = _get_formation_app_first_param_id(formation_api, formation_system_id, formation_app_id)
 
-        # Extract the first parameter ID (assuming single parameter for username)
-        param_id = None
-        if "groups" in app_params and len(app_params["groups"]) > 0:
-            for group in app_params["groups"]:
-                if "parameters" in group and len(group["parameters"]) > 0:
-                    param_id = group["parameters"][0]["id"]
-                    break
-
-        if not param_id:
-            raise HTTPException(
-                status_code=500,
-                detail="Could not determine parameter ID from app configuration"
-            )
-
-        # Build submission payload
-        submission = {
-            "name": f"user-deletion-{username}-{int(time.time())}",
-            "config": {
-                param_id: username
-            }
+    # Build submission payload
+    submission = {
+        "name": f"user-deletion-{username}-{int(time.time())}",
+        "config": {
+            param_id: username
         }
+    }
 
-        # Submit the analysis
-        print(f"Submitting deletion analysis for user: {username}", file=sys.stderr)
-        result = formation_api.launch_analysis(
-            system_id=formation_system_id,
-            app_id=formation_app_id,
-            submission=submission
-        )
+    # Submit the analysis
+    print(f"Submitting deletion analysis for user: {username}", file=sys.stderr)
+    result = formation_api.launch_analysis(
+        system_id=formation_system_id,
+        app_id=formation_app_id,
+        submission=submission
+    )
 
-        analysis_id = result.get("analysis_id")
-        status = result.get("status", "Submitted")
-        print(f"Analysis submitted: {analysis_id}, status: {status}", file=sys.stderr)
+    analysis_id = result.get("analysis_id")
+    status = result.get("status", "Submitted")
+    print(f"Analysis submitted: {analysis_id}, status: {status}", file=sys.stderr)
+    print(f"User deletion analysis will handle: mailing lists, LDAP, iRODS, and database operations", file=sys.stderr)
 
-        # Perform LDAP operations (fast, synchronous)
-        print(f"Performing LDAP operations for user: {username}", file=sys.stderr)
-        existing_user = portal_ldap.get_user(ldap_conn, ldap_base_dn, username)
-        if existing_user and len(existing_user) > 0:
-            # Remove from LDAP groups
-            user_groups = portal_ldap.get_user_groups(ldap_conn, ldap_base_dn, username)
-            print(f"User {username} is in groups: {user_groups}", file=sys.stderr)
-            for ug in user_groups:
-                group_name = ug[1]["cn"][0].decode('utf-8') if isinstance(ug[1]["cn"][0], bytes) else ug[1]["cn"][0]
-                print(f"Removing user {username} from group {group_name}", file=sys.stderr)
-                portal_ldap.remove_user_from_group(ldap_conn, ldap_base_dn, username, group_name)
-
-            # Delete from LDAP
-            print(f"Deleting user {username} from LDAP", file=sys.stderr)
-            portal_ldap.delete_user(ldap_conn, ldap_base_dn, username)
-            print(f"Deleted LDAP user: {username}", file=sys.stderr)
-        else:
-            print(f"User {username} does not exist in LDAP, skipping LDAP deletion", file=sys.stderr)
-
-        return {
-            "user": username,
-            "analysis_id": analysis_id,
-            "status": status
-        }
-
-    except httpx.HTTPStatusError as e:
-        print(f"Formation API error: {e.response.status_code} - {e.response.text}", file=sys.stderr)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to submit deletion analysis: {e.response.status_code}"
-        )
-    except Exception as e:
-        print(f"Async user deletion failed for {username}: {str(e)}", file=sys.stderr)
-        print(f"Exception type: {type(e).__name__}", file=sys.stderr)
-        print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
-        raise HTTPException(status_code=500, detail=f"Async user deletion failed: {str(e)}")
+    return {
+        "user": username,
+        "analysis_id": analysis_id,
+        "status": status
+    }
 
 
-@async_router.get("/status/{analysis_id}", status_code=200, response_model=kinds.AnalysisStatusResponse)
+@async_router.get(
+    "/status/{analysis_id}",
+    status_code=200,
+    response_model=kinds.AnalysisStatusResponse,
+    summary="Get deletion job status",
+    response_description="Current status of the deletion job"
+)
 def get_deletion_status(analysis_id: str, current_user: AuthDep):
     """
-    Get the status of a user deletion analysis.
+    Track the status of an async user deletion job.
 
-    This endpoint is a passthrough to the formation service's analysis status endpoint.
-    It allows tracking the progress of async user deletion operations.
+    This endpoint queries the Formation service to check the current status
+    of a user deletion job. Use the `analysis_id` returned from the
+    `DELETE /async/users/{username}` endpoint to track job progress.
+
+    ## Status Values
+
+    Common status values returned by Formation:
+    - **Submitted**: Job has been queued
+    - **Running**: Job is currently executing
+    - **Completed**: Job finished successfully
+    - **Failed**: Job encountered an error
+
+    ## Polling Recommendations
+
+    - Poll every 5-10 seconds while status is "Submitted" or "Running"
+    - Stop polling once status is "Completed" or "Failed"
+    - For large home directories, jobs may run for several minutes
 
     Args:
-        analysis_id: The UUID of the analysis to check
+        analysis_id: The UUID of the deletion job (from async delete response)
 
     Returns:
-        AnalysisStatusResponse: Status information including analysis_id, status, and URL info
+        AnalysisStatusResponse: Contains analysis_id, current status, and
+        additional metadata from Formation
 
     Raises:
-        HTTPException: If formation API is unavailable or analysis not found
+        HTTPException:
+            - 404: Analysis ID not found in Formation
+            - 503: Formation service not configured or unavailable
+            - 502: Formation API returned an error
+
+    Example:
+        ```
+        GET /async/status/abc-123-def-456
+        Response: {
+          "analysis_id": "abc-123-def-456",
+          "status": "Running",
+          ...
+        }
+        ```
     """
-    import httpx
+    formation_api = _ensure_formation_configured()
 
-    formation_api = dependencies.get_formation_api()
-
-    # Check if formation is configured
-    if not formation_api:
-        raise HTTPException(
-            status_code=503,
-            detail="Formation integration not configured."
-        )
-
-    try:
-        print(f"Checking status for analysis: {analysis_id}", file=sys.stderr)
-        result = formation_api.get_analysis_status(analysis_id)
-        print(f"Analysis {analysis_id} status: {result.get('status')}", file=sys.stderr)
-        return result
-
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Analysis not found: {analysis_id}"
-            )
-        print(f"Formation API error: {e.response.status_code} - {e.response.text}", file=sys.stderr)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get analysis status: {e.response.status_code}"
-        )
-    except Exception as e:
-        print(f"Failed to get deletion status for {analysis_id}: {str(e)}", file=sys.stderr)
-        print(f"Exception type: {type(e).__name__}", file=sys.stderr)
-        print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
-        raise HTTPException(status_code=500, detail=f"Failed to get deletion status: {str(e)}")
+    print(f"Checking status for analysis: {analysis_id}", file=sys.stderr)
+    result = formation_api.get_analysis_status(analysis_id)
+    print(f"Analysis {analysis_id} status: {result.get('status')}", file=sys.stderr)
+    return result
