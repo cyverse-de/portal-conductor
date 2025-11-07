@@ -19,6 +19,7 @@ A service that orchestrates calls to `portal-ldap`, `portal-datastore`, Terrain,
 - **DataStore Integration**: Set up iRODS users with permissions and service registrations
 - **Terrain Integration**: Manage VICE job limits for users
 - **Mailing List Management**: Add/remove users from Mailman mailing lists
+- **Formation Integration**: Async user deletion via Formation batch jobs
 - **Email Services**: Send notification emails for user operations
 - **HTTP Basic Authentication**: Secure all endpoints with configurable credentials
 - **HTTPS Support**: Optional SSL/TLS encryption with automatic HTTP fallback
@@ -147,6 +148,18 @@ The `config.template.json` file contains all required configuration sections wit
     "use_tls": true,
     "use_ssl": false,
     "from": "noreply@yourdomain.com"
+  },
+  "formation": {
+    "base_url": "http://formation:8080",
+    "keycloak": {
+      "server_url": "https://keycloak.example.com",
+      "realm": "CyVerse",
+      "client_id": "portal-conductor-service",
+      "client_secret": "your-client-secret-here"
+    },
+    "user_deletion_app_id": "",
+    "user_deletion_app_name": "portal-delete-user",
+    "system_id": "de"
   }
 }
 ```
@@ -208,6 +221,161 @@ Portal Conductor supports sending emails through external SMTP servers. Configur
 - **Plain (Port 25)**: Set `use_tls: false, use_ssl: false` (not recommended for production)
 
 If your SMTP server supports DKIM signing, it will be handled automatically by the server when emails are sent.
+
+### Formation Configuration
+
+Portal Conductor integrates with the Formation service to support asynchronous user deletion via batch jobs. This is particularly useful for users with large home directories where synchronous deletion would timeout.
+
+**Configuration:**
+```json
+{
+  "formation": {
+    "base_url": "http://formation:8080",
+    "keycloak": {
+      "server_url": "https://keycloak.example.com",
+      "realm": "CyVerse",
+      "client_id": "portal-conductor-service",
+      "client_secret": "your-client-secret-here"
+    },
+    "user_deletion_app_id": "",
+    "user_deletion_app_name": "portal-delete-user",
+    "system_id": "de"
+  }
+}
+```
+
+**Formation Options:**
+- `base_url`: Formation API base URL
+- `keycloak`: OAuth2 authentication configuration for Formation
+  - `server_url`: Keycloak server URL
+  - `realm`: Keycloak realm name
+  - `client_id`: Service client ID for authentication
+  - `client_secret`: Service client secret
+- `user_deletion_app_id`: UUID of the deletion app (optional if using app name)
+- `user_deletion_app_name`: Name of the deletion app (automatically resolved to ID at startup)
+- `system_id`: Formation system identifier (typically "de")
+
+**App Configuration:**
+You can specify the user deletion app either by:
+1. **Direct ID**: Set `user_deletion_app_id` to the app UUID
+2. **App Name**: Set `user_deletion_app_name` (ID is looked up automatically at startup)
+
+Using app name is more flexible when the app ID might change across environments.
+
+**Async Deletion Endpoints:**
+- `DELETE /async/users/{username}` - Submit user deletion job
+- `GET /async/status/{analysis_id}` - Check deletion job status
+
+See the [API Documentation](#api-documentation) section for detailed endpoint usage.
+
+## Username Propagation and App-Exposer Whitelist
+
+Portal Conductor integrates with multiple services to orchestrate job launches and user operations. When jobs are submitted through Portal Conductor, the username flows through a chain of services before reaching app-exposer for whitelist-based resource tracking bypass.
+
+### Service Flow
+
+**Complete job submission chain:**
+```
+portal-conductor → formation → apps → app-exposer
+```
+
+1. **Portal Conductor** → Calls Formation's `/app/launch/{system_id}/{app_id}` endpoint
+2. **Formation** → Extracts username from JWT and calls apps service `/analyses` endpoint
+3. **Apps** → Routes jobs to app-exposer based on job type:
+   - VICE (interactive) apps → `POST /vice/launch`
+   - Batch apps → `POST /batch` (JEX-compatible endpoint)
+4. **App-Exposer** → Checks username against whitelist and optionally bypasses resource tracking
+
+### Username Handling
+
+**For service accounts (when Portal Conductor calls Formation):**
+
+Formation applies username sanitization before passing to downstream services:
+- **Removes all non-alphanumeric characters** (hyphens, underscores, dots, etc.)
+- **Converts to lowercase**
+- Only letters and numbers are retained
+
+**Examples of transformation:**
+- `de-service-account` → `deserviceaccount`
+- `portal-conductor-service` → `portalconductorservice`
+- `Service_Account_123` → `serviceaccount123`
+
+**For regular users (when end users launch jobs):**
+- Username is passed through without sanitization
+- Uses the short form (without domain suffix)
+- Example: `testuser` remains `testuser`
+
+### App-Exposer Whitelist Configuration
+
+App-exposer supports bypassing resource tracking (quota enforcement, concurrent job limits) for whitelisted users. The whitelist is configured in app-exposer's `config.yml`:
+
+```yaml
+resource_tracking:
+  bypass_users:
+    - deserviceaccount       # Sanitized form for "de-service-account"
+    - adminuser              # Regular username
+    - testuser123            # Another user
+```
+
+**CRITICAL:** When adding service account usernames to the app-exposer whitelist, you must use the **sanitized form** that Formation sends, not the original form from your configuration.
+
+**Incorrect whitelist entry (will not match):**
+```yaml
+resource_tracking:
+  bypass_users:
+    - de-service-account    # ❌ Will NOT work - this has hyphens
+```
+
+**Correct whitelist entry (will match):**
+```yaml
+resource_tracking:
+  bypass_users:
+    - deserviceaccount      # ✅ Correct - sanitized form without hyphens
+```
+
+### Verifying Your Configuration
+
+To verify your whitelist configuration is correct:
+
+1. **Check Formation's service account username mapping** (in Formation's config.json):
+   ```json
+   {
+     "service_account_usernames": {
+       "app-runner": "de-service-account"
+     }
+   }
+   ```
+
+2. **Sanitize the username** - Remove all non-alphanumeric characters and lowercase:
+   - `de-service-account` → `deserviceaccount`
+
+3. **Add sanitized form to app-exposer whitelist** (in app-exposer's config.yml):
+   ```yaml
+   resource_tracking:
+     bypass_users:
+       - deserviceaccount
+   ```
+
+4. **Check app-exposer logs** when a job is submitted to confirm:
+   ```
+   Resource tracking disabled for user deserviceaccount (in bypass whitelist), skipping validation
+   ```
+
+### When Whitelist Bypass Applies
+
+Users in the whitelist bypass the following checks:
+
+**For VICE (interactive) apps:**
+- Concurrent job limits
+- Job limit configuration checks
+- Resource usage overages from QMS (Quota Management Service)
+
+**For batch apps:**
+- Resource usage overages from QMS (Quota Management Service)
+
+**Note:** Jobs are still created, tracked, and logged normally. Only the validation step is bypassed.
+
+For more details on Formation's username sanitization, see the [Formation README](https://github.com/cyverse-de/formation/blob/main/README.md#service-account-username-mapping).
 
 ## Authentication
 
@@ -292,11 +460,28 @@ Interactive API documentation is available at:
 
 ### Key Endpoints
 
-- `POST /users/` - Create complete user account (LDAP + DataStore + Email)
+**User Management:**
+- `POST /users/` - Create complete user account (LDAP + DataStore)
+- `DELETE /users/{username}` - Delete user synchronously (LDAP + DataStore only)
+- `POST /users/{username}/password` - Change user password
+- `POST /users/{username}/validate` - Validate user credentials
+
+**Async Operations (Formation):**
+- `DELETE /async/users/{username}` - Delete user asynchronously (all systems including DB)
+- `GET /async/status/{analysis_id}` - Check deletion job status
+
+**LDAP Management:**
 - `POST /ldap/users/` - Create LDAP user only
+- `GET /ldap/users/{username}` - Get LDAP user information
+- `GET /ldap/groups` - List all LDAP groups
+- `POST /ldap/users/{username}/groups/{groupname}` - Add user to group
+
+**DataStore Management:**
 - `POST /datastore/users/` - Create DataStore user only
-- `GET /users/{username}/exists` - Check if user exists across all systems
 - `POST /datastore/users/{username}/services` - Register DataStore services
+- `GET /datastore/users/{username}/exists` - Check if user exists in DataStore
+
+**Other Services:**
 - `GET /terrain/users/{username}/job-limits` - Get VICE job limits
 - `GET /mailinglists/{listname}/members` - List mailing list members
 
