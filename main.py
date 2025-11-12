@@ -265,6 +265,7 @@ formation_app_id = formation_config.get("user_deletion_app_id", "")
 formation_app_name = formation_config.get("user_deletion_app_name", "portal-delete-user")
 formation_system_id = formation_config.get("system_id", "de")
 formation_verify_ssl = formation_config.get("verify_ssl", True)
+formation_timeout = formation_config.get("timeout", 60.0)
 
 
 # Initialize direct connections
@@ -286,6 +287,7 @@ if (formation_base_url and formation_keycloak_url and
         client_id=formation_keycloak_client_id,
         client_secret=formation_keycloak_client_secret,
         verify_ssl=formation_verify_ssl,
+        timeout=formation_timeout,
     )
 
     # Look up app ID by name at startup if only name is provided

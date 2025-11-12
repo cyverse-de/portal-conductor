@@ -46,6 +46,17 @@ class AnalysisStatusResponse(BaseModel):
     url: str | None = None
 
 
+class AnalysisListItem(BaseModel):
+    analysis_id: str
+    app_id: str
+    system_id: str
+    status: str
+
+
+class AnalysesListResponse(BaseModel):
+    analyses: list[AnalysisListItem]
+
+
 class EmailListResponse(BaseModel):
     list: str
     email: str

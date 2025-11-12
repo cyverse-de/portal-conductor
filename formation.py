@@ -31,6 +31,8 @@ class Formation:
         realm: Keycloak realm name.
         client_id: OAuth2 client ID.
         client_secret: OAuth2 client secret.
+        verify_ssl: Whether to verify SSL certificates (default: True).
+        timeout: HTTP request timeout in seconds (default: 60.0).
 
     Example:
         ```python
@@ -61,6 +63,7 @@ class Formation:
         client_id: str,
         client_secret: str,
         verify_ssl: bool = True,
+        timeout: float = 60.0,
     ):
         self.base_url = f"{api_url}/" if not api_url.endswith("/") else api_url
         self.keycloak_url = keycloak_url.rstrip("/")
@@ -68,6 +71,7 @@ class Formation:
         self.client_id = client_id
         self.client_secret = client_secret
         self.verify_ssl = verify_ssl
+        self.timeout = timeout
 
         # Token state
         self._token = None
@@ -206,6 +210,7 @@ class Formation:
             params={"name": search},
             headers={"Authorization": f"Bearer {self._token}"},
             verify=self.verify_ssl,
+            timeout=self.timeout,
         )
         r.raise_for_status()
         result = r.json()
@@ -293,6 +298,7 @@ class Formation:
             self.api_url("apps", system_id, app_id, "parameters"),
             headers={"Authorization": f"Bearer {self._token}"},
             verify=self.verify_ssl,
+            timeout=self.timeout,
         )
         r.raise_for_status()
         return r.json()
@@ -354,6 +360,7 @@ class Formation:
             },
             json=submission,
             verify=self.verify_ssl,
+            timeout=self.timeout,
         )
         r.raise_for_status()
         return r.json()
@@ -385,6 +392,57 @@ class Formation:
             self.api_url("apps", "analyses", analysis_id, "status"),
             headers={"Authorization": f"Bearer {self._token}"},
             verify=self.verify_ssl,
+            timeout=self.timeout,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def list_analyses(self, status: str = "Running"):
+        """
+        List analyses filtered by status.
+
+        Queries Formation for analyses filtered by the specified status.
+        Uses service account authentication.
+
+        Args:
+            status: Status filter (default: "Running"). Common values:
+                    - "Running": Currently executing analyses
+                    - "Completed": Successfully finished analyses
+                    - "Failed": Analyses that failed
+                    - "Submitted": Queued but not yet running
+                    - "Canceled": User-canceled analyses
+
+        Returns:
+            dict: List response with structure:
+                ```python
+                {
+                    "analyses": [
+                        {
+                            "analysis_id": "abc-123",
+                            "app_id": "def-456",
+                            "system_id": "de",
+                            "status": "Running"
+                        }
+                    ]
+                }
+                ```
+
+        Raises:
+            httpx.HTTPStatusError: If the API request fails.
+
+        Example:
+            ```python
+            result = formation.list_analyses(status="Running")
+            # Returns: {"analyses": [...]}
+            ```
+        """
+        self._ensure_valid_token()
+        r = httpx.get(
+            self.api_url("apps", "analyses") + "/",
+            params={"status": status},
+            headers={"Authorization": f"Bearer {self._token}"},
+            verify=self.verify_ssl,
+            timeout=self.timeout,
         )
         r.raise_for_status()
         return r.json()

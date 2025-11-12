@@ -63,6 +63,8 @@
     "user_deletion_app_name": "portal-delete-user",
     "system_id": "de",
     "verify_ssl": true,
-    "_verify_ssl_comment": "Set to false to disable SSL certificate verification for development/testing with self-signed certificates. Should be true in production."
+    "_verify_ssl_comment": "Set to false to disable SSL certificate verification for development/testing with self-signed certificates. Should be true in production.",
+    "timeout": 60.0,
+    "_timeout_comment": "HTTP request timeout in seconds for Formation API calls. Default is 60 seconds. Increase if job submissions are timing out."
   }
 }

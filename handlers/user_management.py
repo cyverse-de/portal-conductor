@@ -133,11 +133,15 @@ def _delete_user_from_ldap(ldap_conn, ldap_base_dn: str, username: str) -> None:
     print(f"Deleted LDAP user: {username}", file=sys.stderr)
 
 
-def _get_formation_app_first_param_id(
+def _get_formation_app_username_param_id(
     formation_api, system_id: str, app_id: str
 ) -> str:
     """
-    Get the first parameter ID from a Formation app configuration.
+    Get the username parameter ID from a Formation app configuration.
+
+    Searches for the appropriate username parameter by looking for parameters
+    with label "Username", or visible required Text parameters without defaults.
+    The parameter IDs returned by Formation already include the step_id prefix.
 
     Args:
         formation_api: Formation API instance.
@@ -145,26 +149,57 @@ def _get_formation_app_first_param_id(
         app_id: Formation app UUID.
 
     Returns:
-        str: The first parameter ID from the app configuration.
+        str: The username parameter's ID (already qualified as "step_id_param_id").
 
     Raises:
-        HTTPException: If parameter ID cannot be determined (500).
+        HTTPException: If username parameter cannot be determined (500).
     """
-    print(
-        f"Getting app parameters for {system_id}/{app_id}",
-        file=sys.stderr
-    )
     app_params = formation_api.get_app_parameters(system_id, app_id)
 
-    # Extract first parameter ID (assuming single parameter for username)
+    # Find the username parameter - look for parameters that match expected criteria
     if "groups" in app_params and len(app_params["groups"]) > 0:
         for group in app_params["groups"]:
             if "parameters" in group and len(group["parameters"]) > 0:
-                return group["parameters"][0]["id"]
+                # Strategy: Find the username parameter by looking for:
+                # 1. A parameter with label containing "username" (case insensitive)
+                # 2. Or a visible, required Text parameter without a defaultValue
+                # 3. Or as fallback, the last visible required parameter
+
+                parameters = group["parameters"]
+                username_param = None
+
+                # First, try to find by label
+                for param in parameters:
+                    label = param.get("label", "").lower()
+                    if "username" in label or "user name" in label:
+                        username_param = param
+                        break
+
+                # If not found by label, look for visible required text param without default
+                if not username_param:
+                    for param in parameters:
+                        if (param.get("type") == "Text" and
+                            param.get("isVisible", False) and
+                            param.get("required", False) and
+                            not param.get("defaultValue") and
+                            not param.get("name")):  # name="" means positional arg, not flag
+                            username_param = param
+                            break
+
+                # Fallback: use last visible required parameter
+                if not username_param:
+                    for param in reversed(parameters):
+                        if param.get("isVisible", False) and param.get("required", False):
+                            username_param = param
+                            break
+
+                if username_param:
+                    param_id = username_param["id"]
+                    return param_id
 
     raise HTTPException(
         status_code=500,
-        detail="Could not determine parameter ID from app configuration"
+        detail="Could not find username parameter in app configuration. Expected a parameter with label 'Username' or a visible required Text parameter."
     )
 
 
@@ -396,8 +431,8 @@ def delete_user_async(username: str, current_user: AuthDep):
             detail="Formation user deletion app ID not configured. Check that either user_deletion_app_id is set or user_deletion_app_name refers to a valid app."
         )
 
-    # Get the first parameter ID from the app configuration
-    param_id = _get_formation_app_first_param_id(formation_api, formation_system_id, formation_app_id)
+    # Get the username parameter ID from the app configuration
+    param_id = _get_formation_app_username_param_id(formation_api, formation_system_id, formation_app_id)
 
     # Build submission payload
     submission = {
@@ -484,4 +519,73 @@ def get_deletion_status(analysis_id: str, current_user: AuthDep):
     print(f"Checking status for analysis: {analysis_id}", file=sys.stderr)
     result = formation_api.get_analysis_status(analysis_id)
     print(f"Analysis {analysis_id} status: {result.get('status')}", file=sys.stderr)
+    return result
+
+
+@async_router.get(
+    "/analyses",
+    status_code=200,
+    response_model=kinds.AnalysesListResponse,
+    summary="List running analyses",
+    response_description="List of analyses filtered by status"
+)
+def list_analyses(
+    status: str = "Running",
+    current_user: AuthDep = None
+):
+    """
+    List analyses filtered by status.
+
+    This endpoint queries the Formation service to retrieve analyses
+    filtered by the specified status. By default, returns only running
+    analyses. Uses the Formation service account to query all analyses
+    in the system.
+
+    ## Status Values
+
+    Common status values returned by Formation:
+    - **Submitted**: Job has been queued
+    - **Running**: Job is currently executing
+    - **Completed**: Job finished successfully
+    - **Failed**: Job encountered an error
+    - **Canceled**: Job was canceled by user
+
+    ## Polling Recommendations
+
+    - Poll every 5-10 seconds to monitor job progress
+    - Filter by status to get specific subsets of analyses
+
+    Args:
+        status: Status filter (default: "Running"). Common values:
+                "Running", "Completed", "Failed", "Submitted", "Canceled"
+
+    Returns:
+        AnalysesListResponse: Contains list of analyses with their
+        analysis_id, app_id, system_id, and status
+
+    Raises:
+        HTTPException:
+            - 503: Formation service not configured or unavailable
+            - 502: Formation API returned an error
+
+    Example:
+        ```
+        GET /async/analyses?status=Running
+        Response: {
+          "analyses": [
+            {
+              "analysis_id": "abc-123-def-456",
+              "app_id": "ghi-789",
+              "system_id": "de",
+              "status": "Running"
+            }
+          ]
+        }
+        ```
+    """
+    formation_api = _ensure_formation_configured()
+
+    print(f"Listing analyses with status: {status}", file=sys.stderr)
+    result = formation_api.list_analyses(status=status)
+    print(f"Found {len(result.get('analyses', []))} analyses", file=sys.stderr)
     return result
