@@ -9,6 +9,7 @@ ENV UV_LINK_MODE=copy
 # Install system dependencies required for python-ldap and python-irodsclient
 RUN apt update -y && \
     apt install -y --no-install-recommends \
+	ca-certificates \
         build-essential \
         libsasl2-dev \
         python3-dev \
