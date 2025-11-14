@@ -446,3 +446,53 @@ class Formation:
         )
         r.raise_for_status()
         return r.json()
+
+    def get_analysis_details(self, analysis_id: str):
+        """
+        Get detailed information about an analysis including submission parameters.
+
+        Queries Formation for the complete analysis details including the
+        submission configuration, parameters, username, and timestamps.
+
+        Args:
+            analysis_id: The UUID of the analysis.
+
+        Returns:
+            dict: Analysis details with structure:
+                ```python
+                {
+                    "id": "abc-123",
+                    "name": "analysis-name",
+                    "username": "john.doe",
+                    "status": "Running",
+                    "submission": {
+                        "config": {"param-id": "value"},
+                        "output_dir": "/iplant/home/user/analyses/...",
+                        "notify": true,
+                        "debug": false
+                    },
+                    "start_date": "2025-01-12T14:30:00Z",
+                    "end_date": null,
+                    ...
+                }
+                ```
+
+        Raises:
+            httpx.HTTPStatusError: If the API request fails or analysis not found.
+
+        Example:
+            ```python
+            details = formation.get_analysis_details("abc-123-def-456")
+            print(f"Username: {details['username']}")
+            print(f"Config: {details['submission']['config']}")
+            ```
+        """
+        self._ensure_valid_token()
+        r = httpx.get(
+            self.api_url("apps", "analyses", analysis_id, "details"),
+            headers={"Authorization": f"Bearer {self._token}"},
+            verify=self.verify_ssl,
+            timeout=self.timeout,
+        )
+        r.raise_for_status()
+        return r.json()

@@ -159,7 +159,9 @@ The `config.template.json` file contains all required configuration sections wit
     },
     "user_deletion_app_id": "",
     "user_deletion_app_name": "portal-delete-user",
-    "system_id": "de"
+    "system_id": "de",
+    "verify_ssl": true,
+    "timeout": 60.0
   }
 }
 ```
@@ -239,7 +241,9 @@ Portal Conductor integrates with the Formation service to support asynchronous u
     },
     "user_deletion_app_id": "",
     "user_deletion_app_name": "portal-delete-user",
-    "system_id": "de"
+    "system_id": "de",
+    "verify_ssl": true,
+    "timeout": 60.0
   }
 }
 ```
@@ -254,6 +258,8 @@ Portal Conductor integrates with the Formation service to support asynchronous u
 - `user_deletion_app_id`: UUID of the deletion app (optional if using app name)
 - `user_deletion_app_name`: Name of the deletion app (automatically resolved to ID at startup)
 - `system_id`: Formation system identifier (typically "de")
+- `verify_ssl`: Enable SSL certificate verification (default: true). Set to false for development with self-signed certificates
+- `timeout`: HTTP request timeout in seconds (default: 60.0). Increase if job submissions are timing out
 
 **App Configuration:**
 You can specify the user deletion app either by:

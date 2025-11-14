@@ -6,6 +6,7 @@ This script starts Portal Conductor with both HTTPS (full API) and HTTP (health 
 when SSL is enabled and certificates are available.
 """
 
+import argparse
 import asyncio
 import json
 import os
@@ -73,6 +74,22 @@ def run_server(app_module, host, port, ssl_keyfile=None, ssl_certfile=None):
 
 def main():
     """Main startup function."""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description="Start Portal Conductor with optional dual-port mode (HTTPS + HTTP health checks)"
+    )
+    parser.add_argument(
+        "--http-port",
+        type=int,
+        help="HTTP port to listen on (overrides config file and environment variables)"
+    )
+    parser.add_argument(
+        "--https-port",
+        type=int,
+        help="HTTPS port to listen on when SSL is enabled (overrides config file)"
+    )
+    args = parser.parse_args()
+
     # Load configuration
     config = load_config()
 
@@ -83,8 +100,8 @@ def main():
     ssl_enabled = ssl_config.get("enabled", False)
     ssl_cert_file = ssl_config.get("cert_file")
     ssl_key_file = ssl_config.get("key_file")
-    ssl_port = ssl_config.get("port", 8443)
-    http_port = server_config.get("http_port", 8000)
+    ssl_port = args.https_port if args.https_port else ssl_config.get("port", 8443)
+    http_port = args.http_port if args.http_port else server_config.get("http_port", 8000)
 
     # Determine which mode to run in
     if ssl_enabled and ssl_cert_file and ssl_key_file and os.path.exists(ssl_cert_file) and os.path.exists(ssl_key_file):

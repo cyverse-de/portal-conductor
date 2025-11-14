@@ -48,6 +48,7 @@ class AnalysisStatusResponse(BaseModel):
 
 class AnalysisListItem(BaseModel):
     analysis_id: str
+    name: str
     app_id: str
     system_id: str
     status: str

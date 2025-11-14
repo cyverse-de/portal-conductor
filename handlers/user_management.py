@@ -589,3 +589,77 @@ def list_analyses(
     result = formation_api.list_analyses(status=status)
     print(f"Found {len(result.get('analyses', []))} analyses", file=sys.stderr)
     return result
+
+
+@async_router.get(
+    "/analyses/{analysis_id}/details",
+    status_code=200,
+    summary="Get analysis details including parameters",
+    response_description="Full analysis details with submission parameters"
+)
+def get_analysis_details(
+    analysis_id: str,
+    current_user: AuthDep = None
+):
+    """
+    Get detailed information about an analysis including submission parameters.
+
+    This endpoint retrieves the full analysis details from Formation,
+    including the submission configuration, parameter values, username,
+    and timestamps. This is useful for viewing what parameters were
+    passed to a job.
+
+    ## Response Fields
+
+    The response includes:
+    - **id**: Analysis UUID
+    - **name**: Analysis name
+    - **username**: User who submitted the analysis
+    - **status**: Current status
+    - **submission**: Full submission configuration including:
+        - **config**: Parameter values (key-value pairs)
+        - **output_dir**: Output directory path
+        - **notify**: Notification setting
+        - **debug**: Debug mode setting
+    - **start_date**: When analysis started
+    - **end_date**: When analysis ended (if completed)
+    - Other metadata from the apps service
+
+    Args:
+        analysis_id: The UUID of the analysis
+
+    Returns:
+        dict: Full analysis details including submission parameters
+
+    Raises:
+        HTTPException:
+            - 404: Analysis ID not found
+            - 503: Formation service not configured or unavailable
+            - 502: Formation API returned an error
+
+    Example:
+        ```
+        GET /async/analyses/abc-123-def-456/details
+        Response: {
+          "id": "abc-123-def-456",
+          "name": "user-deletion-john.doe-1736694600",
+          "username": "portal-conductor",
+          "status": "Running",
+          "submission": {
+            "config": {
+              "step1_username": "john.doe"
+            },
+            "output_dir": "/iplant/home/...",
+            "notify": true
+          },
+          "start_date": "2025-01-12T14:30:00Z",
+          ...
+        }
+        ```
+    """
+    formation_api = _ensure_formation_configured()
+
+    print(f"Fetching details for analysis: {analysis_id}", file=sys.stderr)
+    result = formation_api.get_analysis_details(analysis_id)
+    print(f"Retrieved details for analysis: {result.get('name')}", file=sys.stderr)
+    return result
