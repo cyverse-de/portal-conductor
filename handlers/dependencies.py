@@ -220,6 +220,12 @@ def get_formation_app_id():
     return _formation_app_id
 
 
+def set_formation_app_id(app_id: str) -> None:
+    """Update the cached Formation app ID (e.g. after a lazy lookup)."""
+    global _formation_app_id
+    _formation_app_id = app_id
+
+
 def get_formation_app_name():
     return _formation_app_name
 

@@ -203,6 +203,65 @@ def _get_formation_app_username_param_id(
     )
 
 
+def _resolve_formation_app_id(formation_api) -> str:
+    """
+    Return the Formation user-deletion app ID, retrying the lookup if it
+    was not resolved at startup.
+
+    If the cached app ID is already set, returns it immediately.  Otherwise
+    attempts a by-name lookup through the Formation API and caches the
+    result for subsequent calls.
+
+    Args:
+        formation_api: Configured Formation API client.
+
+    Returns:
+        str: The resolved app ID.
+
+    Raises:
+        HTTPException: 500 if the app ID cannot be resolved.
+    """
+    formation_app_id = dependencies.get_formation_app_id()
+    if formation_app_id:
+        return formation_app_id
+
+    # Lazy retry: the startup lookup may have failed transiently
+    formation_app_name = dependencies.get_formation_app_name()
+    formation_system_id = dependencies.get_formation_system_id()
+
+    if formation_app_name:
+        print(
+            f"[user-deletion] App ID not cached, retrying lookup "
+            f"for '{formation_app_name}' in system '{formation_system_id}'",
+            file=sys.stderr,
+        )
+        try:
+            resolved_id = formation_api.get_app_id_by_name(
+                formation_system_id, formation_app_name
+            )
+            if resolved_id:
+                print(
+                    f"[user-deletion] Resolved app ID: {resolved_id}",
+                    file=sys.stderr,
+                )
+                dependencies.set_formation_app_id(resolved_id)
+                return resolved_id
+        except Exception as e:
+            print(
+                f"[user-deletion] App ID lookup failed: {e}",
+                file=sys.stderr,
+            )
+
+    raise HTTPException(
+        status_code=500,
+        detail=(
+            "Formation user deletion app ID not configured. "
+            "Check that either user_deletion_app_id is set or "
+            "user_deletion_app_name refers to a valid app."
+        ),
+    )
+
+
 @router.post("/", status_code=200, response_model=kinds.UserResponse)
 def add_user(user: kinds.CreateUserRequest, current_user: AuthDep):
     """
@@ -421,15 +480,8 @@ def delete_user_async(username: str, current_user: AuthDep):
     import time
 
     formation_api = _ensure_formation_configured()
-    formation_app_id = dependencies.get_formation_app_id()
+    formation_app_id = _resolve_formation_app_id(formation_api)
     formation_system_id = dependencies.get_formation_system_id()
-
-    # Validate that app_id was resolved (either configured directly or looked up at startup)
-    if not formation_app_id:
-        raise HTTPException(
-            status_code=500,
-            detail="Formation user deletion app ID not configured. Check that either user_deletion_app_id is set or user_deletion_app_name refers to a valid app."
-        )
 
     # Get the username parameter ID from the app configuration
     param_id = _get_formation_app_username_param_id(formation_api, formation_system_id, formation_app_id)
