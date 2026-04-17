@@ -7,7 +7,6 @@ when SSL is enabled and certificates are available.
 """
 
 import argparse
-import asyncio
 import json
 import os
 import sys

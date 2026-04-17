@@ -12,6 +12,7 @@ import email_service
 import formation
 import mailman
 import portal_datastore
+import portal_db
 import portal_ldap
 import terrain
 from handlers import dependencies
@@ -21,6 +22,7 @@ from handlers import email_management
 from handlers import mailing_list_management
 from handlers import datastore_management
 from handlers import terrain_management
+from handlers import portal_management
 
 
 def load_config():
@@ -79,6 +81,13 @@ def load_config():
             "user_deletion_app_name": os.environ.get("FORMATION_USER_DELETION_APP_NAME", "portal-delete-user"),
             "system_id": os.environ.get("FORMATION_SYSTEM_ID", "de"),
             "verify_ssl": os.environ.get("FORMATION_VERIFY_SSL", "true").lower() in ["1", "true", "yes"]
+        },
+        "postgres": {
+            "host": os.environ.get("POSTGRES_HOST", ""),
+            "port": int(os.environ.get("POSTGRES_PORT", "5432")),
+            "database": os.environ.get("POSTGRES_DATABASE", ""),
+            "user": os.environ.get("POSTGRES_USER", ""),
+            "password": os.environ.get("POSTGRES_PASSWORD", "")
         }
     }
 
@@ -266,6 +275,12 @@ formation_app_name = formation_config.get("user_deletion_app_name", "portal-dele
 formation_system_id = formation_config.get("system_id", "de")
 formation_verify_ssl = formation_config.get("verify_ssl", True)
 formation_timeout = formation_config.get("timeout", 60.0)
+postgres_config = config.get("postgres", {})
+postgres_host = postgres_config.get("host", "")
+postgres_port = postgres_config.get("port", 5432)
+postgres_database = postgres_config.get("database", "")
+postgres_user = postgres_config.get("user", "")
+postgres_password = postgres_config.get("password", "")
 
 
 # Initialize direct connections
@@ -304,6 +319,24 @@ if (formation_base_url and formation_keycloak_url and
             print(f"WARNING: Failed to lookup app ID for '{formation_app_name}': {e}", file=sys.stderr)
             print("User deletion will not work until app is created or app_id is configured", file=sys.stderr)
 
+# Initialize portal database connection (optional)
+portal_db_api = None
+if postgres_host and postgres_database and postgres_user and postgres_password:
+    try:
+        portal_db_api = portal_db.PortalDB(
+            host=postgres_host,
+            port=postgres_port,
+            database=postgres_database,
+            user=postgres_user,
+            password=postgres_password,
+        )
+        print("Portal database connection initialized", file=sys.stderr)
+    except Exception as e:
+        print(f"WARNING: Failed to initialize portal database connection: {e}", file=sys.stderr)
+        print("Portal database endpoints will not be available", file=sys.stderr)
+else:
+    print("Portal database not configured, portal endpoints disabled", file=sys.stderr)
+
 # Initialize dependencies for handlers
 dependencies.init_dependencies(
     config=config,
@@ -335,6 +368,7 @@ dependencies.init_dependencies(
     formation_app_id=formation_app_id,
     formation_app_name=formation_app_name,
     formation_system_id=formation_system_id,
+    portal_db=portal_db_api,
 )
 
 
@@ -358,5 +392,6 @@ app.include_router(email_management.router)
 app.include_router(mailing_list_management.router)
 app.include_router(datastore_management.router)
 app.include_router(terrain_management.router)
+app.include_router(portal_management.router)
 
 

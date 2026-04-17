@@ -149,3 +149,54 @@ class LDAPGroupInfo(BaseModel):
     samba_group_type: int | None = None
     samba_sid: str | None = None
     object_classes: list[str] | None = None
+
+
+class PortalUserExistsResponse(BaseModel):
+    """Response for checking if a username exists in the portal database."""
+
+    username: str
+    exists: bool
+    is_restricted: bool = False
+
+
+class PortalEmailExistsResponse(BaseModel):
+    """Response for checking if an email exists in the portal database."""
+
+    email: str
+    exists: bool
+
+
+class UsernameValidationResponse(BaseModel):
+    """Response for username validation."""
+
+    username: str
+    valid: bool
+    reason: str | None = None
+
+
+class CreatePortalUserRequest(BaseModel):
+    """Request to create a user in all systems (Portal DB, LDAP, DataStore, Terrain)."""
+
+    username: str
+    email: str
+    password: str
+    first_name: str
+    last_name: str
+    department: str
+    institution: str
+    occupation_id: int
+    funding_agency_id: int
+    gender_id: int
+    ethnicity_id: int
+    region_id: int
+    research_area_id: int
+    aware_channel_id: int
+    grid_institution_id: int | None = None
+    job_limit: int | None = None
+
+
+class CreatePortalUserResponse(BaseModel):
+    """Response after creating a user in all systems."""
+
+    user: str
+    user_id: int

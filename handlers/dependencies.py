@@ -15,6 +15,7 @@ _terrain_api: Any = None
 _email_api: Any = None
 _smtp_service: Any = None
 _formation_api: Any = None
+_portal_db: Any = None
 
 # Configuration values
 _ldap_community_group = None
@@ -71,6 +72,7 @@ def init_dependencies(
     formation_app_id,
     formation_app_name,
     formation_system_id,
+    portal_db,
 ):
     """Initialize all dependencies. Called by main.py after setup."""
     global _config, _ldap_conn, _ds_api, _terrain_api, _email_api, _smtp_service, _formation_api
@@ -79,6 +81,7 @@ def init_dependencies(
     global _ldap_url, _ldap_user, _ldap_password, _ldap_base_dn
     global _irods_host, _irods_port, _irods_user, _irods_password, _irods_zone
     global _formation_app_id, _formation_app_name, _formation_system_id
+    global _portal_db
 
     _config = config
     _ldap_conn = ldap_conn
@@ -109,6 +112,7 @@ def init_dependencies(
     _formation_app_id = formation_app_id
     _formation_app_name = formation_app_name
     _formation_system_id = formation_system_id
+    _portal_db = portal_db
 
 
 # Getter functions for accessing dependencies
@@ -232,3 +236,7 @@ def get_formation_app_name():
 
 def get_formation_system_id():
     return _formation_system_id
+
+
+def get_portal_db():
+    return _portal_db

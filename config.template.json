@@ -66,5 +66,12 @@
     "_verify_ssl_comment": "Set to false to disable SSL certificate verification for development/testing with self-signed certificates. Should be true in production.",
     "timeout": 60.0,
     "_timeout_comment": "HTTP request timeout in seconds for Formation API calls. Default is 60 seconds. Increase if job submissions are timing out."
+  },
+  "postgres": {
+    "host": "your-postgres-server",
+    "port": 5432,
+    "database": "portal",
+    "user": "portal_user",
+    "password": "your-postgres-password"
   }
 }

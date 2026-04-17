@@ -505,7 +505,7 @@ def delete_user_async(username: str, current_user: AuthDep):
     analysis_id = result.get("analysis_id")
     status = result.get("status", "Submitted")
     print(f"Analysis submitted: {analysis_id}, status: {status}", file=sys.stderr)
-    print(f"User deletion analysis will handle: mailing lists, LDAP, iRODS, and database operations", file=sys.stderr)
+    print("User deletion analysis will handle: mailing lists, LDAP, iRODS, and database operations", file=sys.stderr)
 
     return {
         "user": username,
