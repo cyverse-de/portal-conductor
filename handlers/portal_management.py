@@ -120,6 +120,14 @@ def validate_username(username: str, current_user: AuthDep):
     """
     portal_db = _ensure_portal_db_configured()
 
+    # Check if the username format is valid.
+    if not username_valid(username):
+        return kinds.UsernameValidationResponse(
+            username=username,
+            valid=False,
+            reason="Username format is invalid.",
+        )
+
     # Check if username is restricted
     if portal_db.is_restricted_username(username):
         return kinds.UsernameValidationResponse(
