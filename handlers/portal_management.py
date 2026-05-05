@@ -13,6 +13,7 @@ import kinds
 import portal_ldap
 from handlers import dependencies
 from handlers.auth import AuthDep
+from handlers.validators import username_valid
 
 router = APIRouter(prefix="/portal", tags=["Portal Database"])
 
@@ -57,11 +58,13 @@ def check_username_exists(username: str, current_user: AuthDep):
     """
     portal_db = _ensure_portal_db_configured()
 
+    is_valid = username_valid(username)
     user_exists = portal_db.user_exists_by_username(username)
     is_restricted = portal_db.is_restricted_username(username)
 
     return kinds.PortalUserExistsResponse(
         username=username,
+        valid=is_valid,
         exists=user_exists or is_restricted,
         is_restricted=is_restricted,
     )

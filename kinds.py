@@ -155,6 +155,7 @@ class PortalUserExistsResponse(BaseModel):
     """Response for checking if a username exists in the portal database."""
 
     username: str
+    valid: bool
     exists: bool
     is_restricted: bool = False
 
