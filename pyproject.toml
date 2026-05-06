@@ -22,5 +22,7 @@ test = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.11",
+    "ruff>=0.15.12",
+    "python-lsp-server>=1.14.0",
+    "python-lsp-ruff>=2.3.1",
 ]
