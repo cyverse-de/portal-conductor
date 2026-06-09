@@ -1,6 +1,7 @@
 package emailsvc
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -25,9 +26,10 @@ func TestBuildMessage(t *testing.T) {
 				"From: noreply@site.org",
 				"To: a@b.com, c@d.com",
 				"Content-Type: multipart/alternative",
-				`Content-Type: text/plain; charset="utf-8"`,
+				`Content-Type: text/plain; charset="us-ascii"`,
+				"Content-Transfer-Encoding: 7bit",
 				"plain text",
-				`Content-Type: text/html; charset="utf-8"`,
+				`Content-Type: text/html; charset="us-ascii"`,
 				"<b>html</b>",
 			},
 			nil,
@@ -38,6 +40,17 @@ func TestBuildMessage(t *testing.T) {
 			ptr("just text"), nil,
 			[]string{"just text"},
 			[]string{"text/html"},
+		},
+		{
+			"non-ascii body uses quoted-printable utf-8",
+			[]string{"a@b.com"},
+			ptr("héllo wörld"), nil,
+			[]string{
+				`Content-Type: text/plain; charset="utf-8"`,
+				"Content-Transfer-Encoding: quoted-printable",
+				"h=C3=A9llo w=C3=B6rld",
+			},
+			[]string{"héllo"},
 		},
 	}
 	for _, tt := range tests {
@@ -57,6 +70,33 @@ func TestBuildMessage(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Date and Message-ID must be present; their absence is a common
+// SpamAssassin penalty (MISSING_DATE, MISSING_MID).
+func TestBuildMessageSpamRelevantHeaders(t *testing.T) {
+	msg, err := buildMessage("noreply@site.org", []string{"a@b.com"}, "Hi", ptr("body"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !regexp.MustCompile(`\r\nDate: [A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]{2} \d{4}`).Match(msg) {
+		t.Errorf("missing or malformed Date header:\n%s", msg)
+	}
+	if !regexp.MustCompile(`\r\nMessage-ID: <\d+\.[0-9a-f]+@site\.org>\r\n`).Match(msg) {
+		t.Errorf("missing or malformed Message-ID header:\n%s", msg)
+	}
+}
+
+func TestGenerateMessageIDUnique(t *testing.T) {
+	first := generateMessageID("noreply@site.org")
+	second := generateMessageID("noreply@site.org")
+	if first == second {
+		t.Errorf("expected unique message IDs, got %s twice", first)
+	}
+	if !strings.HasSuffix(first, "@site.org>") {
+		t.Errorf("expected sender domain in message ID, got %s", first)
 	}
 }
 

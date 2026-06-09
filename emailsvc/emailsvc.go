@@ -3,13 +3,18 @@
 package emailsvc
 
 import (
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"mime/multipart"
+	"mime/quotedprintable"
 	"net"
 	"net/smtp"
 	"net/textproto"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -110,7 +115,11 @@ func (s *Service) connect() (*smtp.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("connecting to SMTP server %s over TLS: %w", addr, err)
 		}
-		return smtp.NewClient(conn, s.host)
+		client, err := smtp.NewClient(conn, s.host)
+		if err != nil {
+			return nil, err
+		}
+		return helloClient(client)
 	}
 
 	conn, err := net.DialTimeout("tcp", addr, dialTimeout)
@@ -122,6 +131,9 @@ func (s *Service) connect() (*smtp.Client, error) {
 		_ = conn.Close()
 		return nil, err
 	}
+	if client, err = helloClient(client); err != nil {
+		return nil, err
+	}
 	if s.useTLS {
 		if err := client.StartTLS(&tls.Config{ServerName: s.host}); err != nil {
 			_ = client.Close()
@@ -131,8 +143,28 @@ func (s *Service) connect() (*smtp.Client, error) {
 	return client, nil
 }
 
+// helloClient sends EHLO with the local hostname. net/smtp defaults to
+// "localhost", which lands in the receiving MTA's Received header and is a
+// strong spam signal; Python's smtplib used the host FQDN.
+func helloClient(client *smtp.Client) (*smtp.Client, error) {
+	if err := client.Hello(localHostname()); err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+	return client, nil
+}
+
+func localHostname() string {
+	if hostname, err := os.Hostname(); err == nil && hostname != "" {
+		return hostname
+	}
+	return "localhost"
+}
+
 // buildMessage assembles a multipart/alternative MIME message with optional
 // plain-text and HTML parts, like Python's MIMEMultipart("alternative").
+// Date and Message-ID are set explicitly because no MTA in the delivery path
+// adds them, and their absence raises spam scores.
 func buildMessage(from string, to []string, subject string, textBody, htmlBody *string) ([]byte, error) {
 	var buf strings.Builder
 	mw := multipart.NewWriter(&buf)
@@ -140,19 +172,35 @@ func buildMessage(from string, to []string, subject string, textBody, htmlBody *
 	fmt.Fprintf(&buf, "Subject: %s\r\n", sanitizeHeader(subject))
 	fmt.Fprintf(&buf, "From: %s\r\n", sanitizeHeader(from))
 	fmt.Fprintf(&buf, "To: %s\r\n", sanitizeHeader(strings.Join(to, ", ")))
+	fmt.Fprintf(&buf, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
+	fmt.Fprintf(&buf, "Message-ID: %s\r\n", generateMessageID(from))
 	buf.WriteString("MIME-Version: 1.0\r\n")
 	fmt.Fprintf(&buf, "Content-Type: multipart/alternative; boundary=%q\r\n", mw.Boundary())
 	buf.WriteString("\r\n")
 
 	writePart := func(contentType, body string) error {
 		header := textproto.MIMEHeader{}
+		if isASCII(body) {
+			header.Set("Content-Type", contentType+`; charset="us-ascii"`)
+			header.Set("Content-Transfer-Encoding", "7bit")
+			part, err := mw.CreatePart(header)
+			if err != nil {
+				return err
+			}
+			_, err = part.Write([]byte(body))
+			return err
+		}
 		header.Set("Content-Type", contentType+`; charset="utf-8"`)
+		header.Set("Content-Transfer-Encoding", "quoted-printable")
 		part, err := mw.CreatePart(header)
 		if err != nil {
 			return err
 		}
-		_, err = part.Write([]byte(body))
-		return err
+		qp := quotedprintable.NewWriter(part)
+		if _, err := qp.Write([]byte(body)); err != nil {
+			return err
+		}
+		return qp.Close()
 	}
 
 	if textBody != nil && *textBody != "" {
@@ -169,6 +217,29 @@ func buildMessage(from string, to []string, subject string, textBody, htmlBody *
 		return nil, err
 	}
 	return []byte(buf.String()), nil
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// generateMessageID returns a unique RFC 5322 Message-ID using the sender's
+// domain (or the local hostname when the From address has none).
+func generateMessageID(from string) string {
+	domain := localHostname()
+	if at := strings.LastIndex(from, "@"); at != -1 && at < len(from)-1 {
+		domain = strings.TrimRight(from[at+1:], ">")
+	}
+	random := make([]byte, 8)
+	if _, err := rand.Read(random); err != nil {
+		binary.BigEndian.PutUint64(random, uint64(time.Now().UnixNano()))
+	}
+	return fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), hex.EncodeToString(random), domain)
 }
 
 // sanitizeHeader strips CR/LF to prevent header injection from request data.
