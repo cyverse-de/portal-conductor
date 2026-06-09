@@ -119,10 +119,10 @@ func decodeTokenExpiry(token string) time.Time {
 	return time.Unix(claims.Exp, 0)
 }
 
-func (c *Client) ensureValidToken() (string, error) {
+func (c *Client) accessToken(forceRefresh bool) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.token == "" || time.Now().After(c.tokenExpiry.Add(-refreshBuffer)) {
+	if forceRefresh || c.token == "" || time.Now().After(c.tokenExpiry.Add(-refreshBuffer)) {
 		if err := c.refreshToken(); err != nil {
 			return "", err
 		}
@@ -130,37 +130,61 @@ func (c *Client) ensureValidToken() (string, error) {
 	return c.token, nil
 }
 
-func (c *Client) doJSON(method, requestURL string, query url.Values, body any, out any) error {
+func (c *Client) attempt(method, requestURL string, payload []byte, forceTokenRefresh bool) (*http.Response, error) {
 	var reqBody io.Reader
-	if body != nil {
-		payload, err := json.Marshal(body)
-		if err != nil {
-			return err
-		}
+	if payload != nil {
 		reqBody = bytes.NewReader(payload)
-	}
-
-	if len(query) > 0 {
-		requestURL += "?" + query.Encode()
 	}
 	req, err := http.NewRequest(method, requestURL, reqBody)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	token, err := c.ensureValidToken()
+	token, err := c.accessToken(forceTokenRefresh)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	if body != nil {
+	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return &external.RequestError{URL: requestURL, Err: err}
+		return nil, &external.RequestError{URL: requestURL, Err: err}
 	}
+	return resp, nil
+}
+
+func (c *Client) doJSON(method, requestURL string, query url.Values, body any, out any) error {
+	var payload []byte
+	if body != nil {
+		var err error
+		payload, err = json.Marshal(body)
+		if err != nil {
+			return err
+		}
+	}
+	if len(query) > 0 {
+		requestURL += "?" + query.Encode()
+	}
+
+	resp, err := c.attempt(method, requestURL, payload, false)
+	if err != nil {
+		return err
+	}
+
+	// A 401/403 can mean the cached token predates a role or permission
+	// change in Keycloak; retry once with a freshly minted token.
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		resp.Body.Close() //nolint:errcheck
+		log.Printf("[Formation] %d from %s; retrying once with a fresh token in case the cached one predates a Keycloak permission change", resp.StatusCode, requestURL)
+		resp, err = c.attempt(method, requestURL, payload, true)
+		if err != nil {
+			return err
+		}
+	}
+
 	defer resp.Body.Close() //nolint:errcheck
 	if err := external.CheckResponse(resp); err != nil {
 		return err
