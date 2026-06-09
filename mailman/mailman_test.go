@@ -1,6 +1,12 @@
 package mailman
 
 import (
+	"errors"
+	"net/url"
+	"strings"
+
+	"github.com/cyverse-de/portal-conductor/external"
+
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -115,5 +121,55 @@ func TestAdminURLIgnoresBasePath(t *testing.T) {
 	want := "http://mailman-server/mailman/admin/mylist/members/add"
 	if got != want {
 		t.Errorf("got %s, want %s", got, want)
+	}
+}
+
+func TestErrorsRedactAdminPassword(t *testing.T) {
+	const password = "$onorand0g!"
+
+	t.Run("request error", func(t *testing.T) {
+		// Unreachable port: the connection error embeds the request URL.
+		client, err := New("http://127.0.0.1:1", password)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = client.AddMember("mylist", "a@b.com")
+		if err == nil {
+			t.Fatal("expected connection error")
+		}
+		assertRedacted(t, err.Error(), password)
+	})
+
+	t.Run("status error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Echo the password back so the body needs redaction too.
+			http.Error(w, "bad admin password: "+r.URL.Query().Get("adminpw"), http.StatusUnauthorized)
+		}))
+		defer server.Close()
+
+		client, err := New(server.URL, password)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = client.AddMember("mylist", "a@b.com")
+		if err == nil {
+			t.Fatal("expected status error")
+		}
+		var statusErr *external.StatusError
+		if !errors.As(err, &statusErr) {
+			t.Fatalf("expected StatusError, got %T", err)
+		}
+		assertRedacted(t, statusErr.URL, password)
+		assertRedacted(t, statusErr.Body, password)
+	})
+}
+
+func assertRedacted(t *testing.T, s, password string) {
+	t.Helper()
+	if strings.Contains(s, password) || strings.Contains(s, url.QueryEscape(password)) {
+		t.Errorf("password leaked into %q", s)
+	}
+	if !strings.Contains(s, "[REDACTED]") {
+		t.Errorf("expected [REDACTED] marker in %q", s)
 	}
 }

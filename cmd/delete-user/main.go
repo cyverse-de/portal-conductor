@@ -15,6 +15,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/cyverse-de/portal-conductor/config"
 	"github.com/cyverse-de/portal-conductor/datastore"
 	"github.com/cyverse-de/portal-conductor/ldapclient"
@@ -129,6 +131,10 @@ func validateConfig(cfg *config.Config) error {
 }
 
 func main() {
+	// go-irodsclient logs connection-pool details at info level through
+	// logrus; only surface its warnings and errors.
+	logrus.SetLevel(logrus.WarnLevel)
+
 	args, err := parseArgs(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, usage)

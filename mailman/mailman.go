@@ -4,6 +4,7 @@
 package mailman
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -48,6 +49,16 @@ func (c *Client) adminURL(listName string, parts ...string) *url.URL {
 	return &u
 }
 
+// redact masks the admin password (raw and URL-encoded) in error text so it
+// never reaches response bodies or logs.
+func (c *Client) redact(s string) string {
+	if c.password == "" {
+		return s
+	}
+	s = strings.ReplaceAll(s, url.QueryEscape(c.password), "[REDACTED]")
+	return strings.ReplaceAll(s, c.password, "[REDACTED]")
+}
+
 func (c *Client) do(method string, u *url.URL, params url.Values) (string, error) {
 	u.RawQuery = params.Encode()
 	req, err := http.NewRequest(method, u.String(), nil)
@@ -56,10 +67,15 @@ func (c *Client) do(method string, u *url.URL, params url.Values) (string, error
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", &external.RequestError{URL: u.String(), Err: err}
+		return "", &external.RequestError{URL: c.redact(u.String()), Err: errors.New(c.redact(err.Error()))}
 	}
 	defer resp.Body.Close() //nolint:errcheck
 	if err := external.CheckResponse(resp); err != nil {
+		var statusErr *external.StatusError
+		if errors.As(err, &statusErr) {
+			statusErr.URL = c.redact(statusErr.URL)
+			statusErr.Body = c.redact(statusErr.Body)
+		}
 		return "", err
 	}
 	body, err := io.ReadAll(resp.Body)

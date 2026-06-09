@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/cyverse-de/portal-conductor/api"
 	"github.com/cyverse-de/portal-conductor/config"
 	"github.com/cyverse-de/portal-conductor/datastore"
@@ -23,6 +25,10 @@ import (
 )
 
 func main() {
+	// go-irodsclient logs connection-pool details at info level through
+	// logrus; only surface its warnings and errors.
+	logrus.SetLevel(logrus.WarnLevel)
+
 	httpPortFlag := flag.Int("http-port", 0, "HTTP port to listen on (overrides config file and environment variables)")
 	httpsPortFlag := flag.Int("https-port", 0, "HTTPS port to listen on when SSL is enabled (overrides config file)")
 	flag.Parse()
