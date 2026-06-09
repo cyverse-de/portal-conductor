@@ -2,56 +2,55 @@
 
 A service that orchestrates calls to `portal-ldap`, `portal-datastore`, Terrain, and mailing list services for managing user accounts and services in the CyVerse platform.
 
+The server and the standalone `delete-user` batch job are written in Go:
+
+- `main.go` — the API server (built by `Dockerfile`)
+- `cmd/delete-user` — the user-deletion CLI run as a Discovery Environment
+  batch job (built by `DeleteUser.dockerfile`); it reads the same config file
+  plus a `portal_db` section (see `scripts/delete-user.example.json`)
+
 ## Quick Start
 
-### 1. Install Dependencies
-
-```bash
-uv sync
-```
-
-### 2. Configure
+### 1. Configure
 
 ```bash
 cp config.template.json config.json
 ```
 
-Edit `config.json` with your service credentials (LDAP, iRODS, Terrain, etc.).
+Edit `config.json` with your service credentials (LDAP, iRODS, Terrain, etc.)
+and set `auth.username`/`auth.password` for HTTP Basic authentication.
 
-### 3. Set Up Authentication
-
-Generate a password hash:
-
-```bash
-uv run python scripts/generate-password-hash.py
-```
-
-Update the `auth.password` field in `config.json` with the generated hash.
-
-### 4. Generate SSL Certificates (Optional)
+### 2. Generate SSL Certificates (Optional)
 
 ```bash
 ./scripts/generate-ssl-cert.sh
 ```
 
-### 5. Run
+### 3. Build and Run
 
 ```bash
-uv run python start_dual.py
+go build -o portal-conductor .
+./portal-conductor
 ```
 
-The service runs in dual-port mode:
-- **HTTPS port 8443**: Full API with authentication (when certificates available)
+When SSL is enabled with certificates available, the service runs in dual-port mode:
+- **HTTPS port 8443**: Full API with authentication
 - **HTTP port 8000**: Health checks only (always available)
 
-### 6. Test
+Without SSL it serves the full API over HTTP on port 8000. The
+`--http-port` and `--https-port` flags override the configured ports.
+
+### 4. Test
 
 ```bash
+# Run the unit tests
+go test ./...
+
 # Health check (no auth required)
 curl -k https://localhost:8443/
 
 # Authenticated endpoint
-curl -k -u admin:your_password https://localhost:8443/users/test/exists
+curl -k -u admin:your_password https://localhost:8443/ldap/users/test/exists
 ```
 
 ## Documentation
@@ -63,5 +62,3 @@ curl -k -u admin:your_password https://localhost:8443/users/test/exists
 - [Development](docs/development.md) - Project structure and testing
 - [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 - [Username Propagation](docs/username-propagation.md) - Service account handling
-
-Interactive API docs available at `/docs` (Swagger UI) and `/redoc` when running.

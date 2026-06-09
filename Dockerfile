@@ -1,41 +1,27 @@
-# Adapted from https://github.com/astral-sh/uv-docker-example/blob/main/Dockerfile
+FROM golang:1.24 AS build
 
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+WORKDIR /src
 
-WORKDIR /app
+# Download dependencies first for better caching
+COPY go.mod go.sum ./
+RUN go mod download
 
-ENV UV_LINK_MODE=copy
+COPY . .
+RUN CGO_ENABLED=0 go build -o /portal-conductor .
 
-# Install system dependencies required for python-ldap and python-irodsclient
+FROM debian:bookworm-slim
+
+# CA certificates are needed for TLS connections to Keycloak and other services
 RUN apt update -y && \
-    apt install -y --no-install-recommends \
-	ca-certificates \
-        build-essential \
-        libsasl2-dev \
-        python3-dev \
-        libldap2-dev && \
+    apt install -y --no-install-recommends ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files first for better caching
-COPY uv.lock pyproject.toml ./
+WORKDIR /app
 
-# Install dependencies without the project itself
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-install-project --no-dev
-
-# Copy the entire project
-COPY . /app
-
-# Install the project itself
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev
-
-# Set PATH to include virtual environment
-ENV PATH="/app/.venv/bin:$PATH"
+COPY --from=build /portal-conductor /usr/local/bin/portal-conductor
 
 # Expose ports for both HTTP and HTTPS
 EXPOSE 8000 8443
 
-# Use our dual-port startup script with SSL support
-CMD ["python", "start_dual.py"]
+CMD ["portal-conductor"]

@@ -1,11 +1,5 @@
 # API Documentation
 
-Interactive API documentation is available at:
-
-- **Swagger UI**: https://localhost:8443/docs
-- **ReDoc**: https://localhost:8443/redoc
-- **OpenAPI JSON**: https://localhost:8443/openapi.json
-
 ## User Management
 
 | Endpoint | Method | Description |

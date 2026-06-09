@@ -1,20 +1,12 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
+# Go build artifacts (compiled binaries at the repo root)
+/portal-conductor
+/delete-user
 
 config.json
 portal2.json
 qa.conf
 portal-delete-user.json
 .clj-kondo/
-.coverage
-.lsp/ 
+.lsp/
 build.json
 ssl-certs/
