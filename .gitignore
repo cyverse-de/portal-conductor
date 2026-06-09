@@ -2,6 +2,11 @@
 /portal-conductor
 /delete-user
 
+# Stale artifacts from the pre-rewrite Python service
+.coverage
+__pycache__/
+/handlers/
+
 config.json
 portal2.json
 qa.conf
