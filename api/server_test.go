@@ -173,6 +173,12 @@ func TestRequestValidation(t *testing.T) {
 			`{not json`,
 			nil,
 		},
+		{
+			"null required field rejected",
+			http.MethodPost, "/users/someone/password",
+			`{"password": null}`,
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

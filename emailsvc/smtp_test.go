@@ -97,8 +97,8 @@ func TestSendUsesHostnameForEHLO(t *testing.T) {
 		Port: config.FlexString(strconv.Itoa(server.port())),
 		From: "noreply@site.org",
 	})
-	if ok := svc.Send([]string{"someone@example.org"}, "Hello", ptr("body text"), nil, nil, nil); !ok {
-		t.Fatal("Send reported failure")
+	if err := svc.Send([]string{"someone@example.org"}, "Hello", ptr("body text"), nil, nil, nil); err != nil {
+		t.Fatalf("Send failed: %v", err)
 	}
 
 	ehlo := <-server.commands

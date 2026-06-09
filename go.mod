@@ -6,6 +6,7 @@ require (
 	github.com/cyverse/go-irodsclient v0.20.0
 	github.com/go-ldap/ldap/v3 v3.4.13
 	github.com/lib/pq v1.12.3
+	github.com/sirupsen/logrus v1.9.3
 )
 
 require (
@@ -28,7 +29,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/rs/xid v1.3.0 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect

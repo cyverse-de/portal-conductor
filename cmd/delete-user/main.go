@@ -8,6 +8,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"github.com/cyverse-de/portal-conductor/ldapclient"
 	"github.com/cyverse-de/portal-conductor/mailman"
 	"github.com/cyverse-de/portal-conductor/portaldb"
+	"github.com/cyverse-de/portal-conductor/userdel"
 )
 
 const (
@@ -58,7 +60,7 @@ type cliArgs struct {
 // argparse, so existing Formation app invocations keep working.
 func parseArgs(argv []string) (cliArgs, error) {
 	args := cliArgs{
-		configPath: envOr("PORTAL_CONDUCTOR_CONFIG", "config.json"),
+		configPath: cmp.Or(os.Getenv("PORTAL_CONDUCTOR_CONFIG"), "config.json"),
 	}
 	for i := 0; i < len(argv); i++ {
 		arg := argv[i]
@@ -89,42 +91,26 @@ func parseArgs(argv []string) (cliArgs, error) {
 	return args, nil
 }
 
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
 // validateConfig checks the fields the deletion job needs, matching
 // delete-user.py's validate_config.
 func validateConfig(cfg *config.Config) error {
-	required := []struct {
-		name  string
-		value string
-	}{
-		{"ldap.url", cfg.LDAP.URL},
-		{"ldap.user", cfg.LDAP.User},
-		{"ldap.password", cfg.LDAP.Password},
-		{"ldap.base_dn", cfg.LDAP.BaseDN},
-		{"irods.host", cfg.IRODS.Host},
-		{"irods.port", string(cfg.IRODS.Port)},
-		{"irods.user", cfg.IRODS.User},
-		{"irods.password", cfg.IRODS.Password},
-		{"irods.zone", cfg.IRODS.Zone},
-		{"portal_db.host", cfg.PortalDB.Host},
-		{"portal_db.port", string(cfg.PortalDB.Port)},
-		{"portal_db.name", cfg.PortalDB.Name},
-		{"portal_db.user", cfg.PortalDB.User},
-		{"portal_db.password", cfg.PortalDB.Password},
+	required := []config.RequiredField{
+		{Name: "ldap.url", Value: cfg.LDAP.URL},
+		{Name: "ldap.user", Value: cfg.LDAP.User},
+		{Name: "ldap.password", Value: cfg.LDAP.Password},
+		{Name: "ldap.base_dn", Value: cfg.LDAP.BaseDN},
+		{Name: "irods.host", Value: cfg.IRODS.Host},
+		{Name: "irods.port", Value: string(cfg.IRODS.Port)},
+		{Name: "irods.user", Value: cfg.IRODS.User},
+		{Name: "irods.password", Value: cfg.IRODS.Password},
+		{Name: "irods.zone", Value: cfg.IRODS.Zone},
+		{Name: "portal_db.host", Value: cfg.PortalDB.Host},
+		{Name: "portal_db.port", Value: string(cfg.PortalDB.Port)},
+		{Name: "portal_db.name", Value: cfg.PortalDB.Name},
+		{Name: "portal_db.user", Value: cfg.PortalDB.User},
+		{Name: "portal_db.password", Value: cfg.PortalDB.Password},
 	}
-	var missing []string
-	for _, f := range required {
-		if f.value == "" {
-			missing = append(missing, f.name)
-		}
-	}
-	if len(missing) > 0 {
+	if missing := config.MissingFields(required); len(missing) > 0 {
 		return fmt.Errorf("missing required configuration fields: %s", strings.Join(missing, ", "))
 	}
 	return nil
@@ -252,14 +238,14 @@ func deleteUser(ctx context.Context, d *deleter, db *sql.DB, username string, dr
 	log.Println(sectionDivider)
 
 	log.Printf("%sPhase 2: Datastore deletion", prefix)
-	if err := deleteFromDatastore(d.ds, username, dryRun); err != nil {
+	if err := userdel.FromDatastore(d.ds, username, dryRun); err != nil {
 		log.Printf("User deletion failed for %s: %v", username, err)
 		return false
 	}
 	log.Println(sectionDivider)
 
 	log.Printf("%sPhase 3: LDAP deletion", prefix)
-	if err := deleteFromLDAP(d.ldap, username, dryRun); err != nil {
+	if err := userdel.FromLDAP(d.ldap, username, dryRun); err != nil {
 		log.Printf("User deletion failed for %s: %v", username, err)
 		return false
 	}
@@ -308,85 +294,6 @@ func removeFromMailingLists(client *mailman.Client, emails []portaldb.EmailInfo,
 			log.Printf("%sRemoved %s from mailing list %s", prefix, email.Email, subscription.ListName)
 		}
 	}
-}
-
-func deleteFromDatastore(ds *datastore.DataStore, username string, dryRun bool) error {
-	prefix := ""
-	if dryRun {
-		prefix = "[DRY RUN] "
-	}
-	log.Printf("%sChecking if user exists in datastore: %s", prefix, username)
-	exists, err := ds.UserExists(username)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		log.Printf("%sUser %s does not exist in datastore, skipping datastore deletion", prefix, username)
-		return nil
-	}
-
-	log.Printf("%sDeleting home directory for user: %s", prefix, username)
-	if !dryRun {
-		if err := ds.DeleteHome(username); err != nil {
-			return err
-		}
-	}
-	log.Printf("%sDeleted home directory for user: %s", prefix, username)
-
-	log.Printf("%sDeleting datastore user: %s", prefix, username)
-	if !dryRun {
-		if err := ds.DeleteUser(username); err != nil {
-			return err
-		}
-	}
-	log.Printf("%sDeleted datastore user: %s", prefix, username)
-	return nil
-}
-
-func deleteFromLDAP(client *ldapclient.Client, username string, dryRun bool) error {
-	prefix := ""
-	if dryRun {
-		prefix = "[DRY RUN] "
-	}
-	log.Printf("%sChecking if user %s exists in LDAP", prefix, username)
-	entry, err := client.GetUser(username)
-	if err != nil {
-		return err
-	}
-	if entry == nil {
-		log.Printf("%sUser %s does not exist in LDAP, skipping LDAP deletion", prefix, username)
-		return nil
-	}
-
-	log.Printf("%sGetting LDAP groups for user: %s", prefix, username)
-	groups, err := client.GetUserGroups(username)
-	if err != nil {
-		return err
-	}
-	log.Printf("%sUser %s is in %d groups", prefix, username, len(groups))
-
-	for _, group := range groups {
-		if len(group.Attrs["cn"]) == 0 {
-			continue
-		}
-		groupName := group.Attrs["cn"][0]
-		log.Printf("%sRemoving user %s from group %s", prefix, username, groupName)
-		if !dryRun {
-			if err := client.RemoveUserFromGroup(username, groupName); err != nil {
-				return err
-			}
-		}
-		log.Printf("%sRemoved user %s from group %s", prefix, username, groupName)
-	}
-
-	log.Printf("%sDeleting user %s from LDAP", prefix, username)
-	if !dryRun {
-		if err := client.DeleteUser(username); err != nil {
-			return err
-		}
-	}
-	log.Printf("%sDeleted LDAP user: %s", prefix, username)
-	return nil
 }
 
 // deleteFromPortalDatabase removes the user's database records in a single

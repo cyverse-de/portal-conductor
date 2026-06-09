@@ -94,6 +94,8 @@ func TestLoadEnvFallback(t *testing.T) {
 
 func validConfig() *Config {
 	c := defaults()
+	c.Auth.Username = "admin"
+	c.Auth.Password = "secret"
 	c.LDAP = LDAP{URL: "ldap://x", User: "u", Password: "p", BaseDN: "dc=x", CommunityGroup: "community", EveryoneGroup: "everyone"}
 	c.IRODS = IRODS{Host: "h", Port: "1247", User: "u", Password: "p", Zone: "z", AdminUser: "rodsadmin", IPCServicesUser: "ipcservices"}
 	c.Terrain = Terrain{URL: "http://t/", User: "tu", Password: "tp"}
@@ -117,6 +119,9 @@ func TestValidate(t *testing.T) {
 			func(c *Config) { c.Mailman.Enabled = true; c.Mailman.URL = "http://m/" },
 			"mailman.password",
 		},
+		{"auth enabled without username", func(c *Config) { c.Auth.Username = "" }, "auth.username"},
+		{"auth enabled without password", func(c *Config) { c.Auth.Password = "" }, "auth.password"},
+		{"auth disabled needs no credentials", func(c *Config) { c.Auth = Auth{} }, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

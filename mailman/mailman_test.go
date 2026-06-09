@@ -26,6 +26,7 @@ func TestMemberExists(t *testing.T) {
 		{"no partial match", "doe@example.org", `<td>john.doe@example.orgx</td>`, false},
 		{"case insensitive", "John.Doe@Example.org", `<td>john.doe@example.org</td>`, true},
 		{"url-encoded email", "john.doe%40example.org", `<td>john.doe@example.org</td>`, true},
+		{"plus-addressed email", "john+tag@example.org", `<td>john+tag@example.org</td>`, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

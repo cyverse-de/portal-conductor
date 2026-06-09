@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strconv"
 	"time"
 
@@ -51,12 +52,21 @@ func New(url, bindDN, bindPassword, baseDN string) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) dial() (*ldap.Conn, error) {
+// dialOnly opens an unbound connection; callers bind with their own credentials.
+func (c *Client) dialOnly() (*ldap.Conn, error) {
 	conn, err := ldap.DialURL(c.url)
 	if err != nil {
 		return nil, fmt.Errorf("dialing LDAP server %s failed (server down or unreachable?): %w", c.url, err)
 	}
 	conn.SetTimeout(time.Minute)
+	return conn, nil
+}
+
+func (c *Client) dial() (*ldap.Conn, error) {
+	conn, err := c.dialOnly()
+	if err != nil {
+		return nil, err
+	}
 	if err := conn.Bind(c.bindDN, c.bindPassword); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("LDAP bind as %s failed (bad service credentials?): %w", c.bindDN, err)
@@ -157,14 +167,18 @@ func (c *Client) GetGroups() ([]Group, error) {
 	return groups, err
 }
 
+func attrsMap(entry *ldap.Entry) map[string][]string {
+	attrs := make(map[string][]string, len(entry.Attributes))
+	for _, a := range entry.Attributes {
+		attrs[a.Name] = a.Values
+	}
+	return attrs
+}
+
 func entriesToGroups(entries []*ldap.Entry) []Group {
 	groups := make([]Group, 0, len(entries))
 	for _, e := range entries {
-		attrs := make(map[string][]string, len(e.Attributes))
-		for _, a := range e.Attributes {
-			attrs[a.Name] = a.Values
-		}
-		groups = append(groups, Group{DN: e.DN, Attrs: attrs})
+		groups = append(groups, Group{DN: e.DN, Attrs: attrsMap(e)})
 	}
 	return groups
 }
@@ -242,7 +256,7 @@ func (c *Client) CreateUserWithGroups(user kinds.CreateUserRequest, everyoneGrou
 		if group == "" {
 			continue
 		}
-		inGroup, err := c.userInGroup(user.Username, group)
+		inGroup, err := c.UserInGroup(user.Username, group)
 		if err != nil {
 			return err
 		}
@@ -258,7 +272,8 @@ func (c *Client) CreateUserWithGroups(user kinds.CreateUserRequest, everyoneGrou
 	return nil
 }
 
-func (c *Client) userInGroup(username, group string) (bool, error) {
+// UserInGroup reports whether username is a memberUid of group.
+func (c *Client) UserInGroup(username, group string) (bool, error) {
 	groups, err := c.GetUserGroups(username)
 	if err != nil {
 		return false, err
@@ -269,11 +284,6 @@ func (c *Client) userInGroup(username, group string) (bool, error) {
 		}
 	}
 	return false, nil
-}
-
-// UserInGroup reports whether username is a memberUid of group.
-func (c *Client) UserInGroup(username, group string) (bool, error) {
-	return c.userInGroup(username, group)
 }
 
 // AddUserToGroup adds username to group's memberUid attribute.
@@ -313,8 +323,9 @@ func (c *Client) SetShadowLastChange(daysSinceEpoch int, username string) error 
 		return fmt.Errorf("invalid shadowLastChange '%d': must be a non-negative integer", daysSinceEpoch)
 	}
 	req := ldap.NewModifyRequest(c.userDN(username), nil)
-	req.Delete("shadowLastChange", nil)
-	req.Add("shadowLastChange", []string{strconv.Itoa(daysSinceEpoch)})
+	// Replace, not Delete+Add: a delete fails with noSuchAttribute when the
+	// entry has no shadowLastChange, stranding a half-finished password change.
+	req.Replace("shadowLastChange", []string{strconv.Itoa(daysSinceEpoch)})
 	return c.do(func(conn *ldap.Conn) error { return conn.Modify(req) })
 }
 
@@ -329,8 +340,13 @@ func (c *Client) ModifyUserAttribute(username, attribute, value string) error {
 }
 
 // ValidateCredentials binds as the user to check the password. It returns
-// false (with no error) for unknown users or wrong passwords.
+// false (with no error) for unknown users, wrong passwords, and empty
+// passwords (go-ldap rejects empty-password binds client-side with a
+// non-InvalidCredentials error, which would otherwise surface as a 500).
 func (c *Client) ValidateCredentials(username, password string) (bool, error) {
+	if password == "" {
+		return false, nil
+	}
 	dn, err := c.GetUserDN(username)
 	if err != nil {
 		return false, err
@@ -339,12 +355,11 @@ func (c *Client) ValidateCredentials(username, password string) (bool, error) {
 		return false, nil
 	}
 
-	conn, err := ldap.DialURL(c.url)
+	conn, err := c.dialOnly()
 	if err != nil {
-		return false, fmt.Errorf("dialing LDAP server %s failed (server down or unreachable?): %w", c.url, err)
+		return false, err
 	}
 	defer conn.Close() //nolint:errcheck
-	conn.SetTimeout(time.Minute)
 
 	if err := conn.Bind(dn, password); err != nil {
 		var ldapErr *ldap.Error
@@ -375,8 +390,7 @@ func intAttr(attrs map[string][]string, name string) *int {
 
 func listAttr(attrs map[string][]string, name string) *[]string {
 	if vals, ok := attrs[name]; ok && len(vals) > 0 {
-		out := make([]string, len(vals))
-		copy(out, vals)
+		out := slices.Clone(vals)
 		return &out
 	}
 	return nil
@@ -384,10 +398,7 @@ func listAttr(attrs map[string][]string, name string) *[]string {
 
 // ParseUserAttributes converts a user entry into the API's UserLDAPInfo.
 func ParseUserAttributes(username string, entry *ldap.Entry) kinds.UserLDAPInfo {
-	attrs := make(map[string][]string, len(entry.Attributes))
-	for _, a := range entry.Attributes {
-		attrs[a.Name] = a.Values
-	}
+	attrs := attrsMap(entry)
 	return kinds.UserLDAPInfo{
 		Username:         username,
 		UIDNumber:        intAttr(attrs, "uidNumber"),

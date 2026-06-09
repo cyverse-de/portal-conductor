@@ -134,12 +134,6 @@ type EmailRequest struct {
 	BCC       StringList `json:"bcc"`
 }
 
-// EmailResponse reports whether the email was sent successfully.
-type EmailResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-}
-
 // UserExistsResponse reports whether a username exists in a system.
 type UserExistsResponse struct {
 	Username string `json:"username"`

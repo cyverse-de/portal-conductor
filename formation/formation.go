@@ -6,7 +6,6 @@ package formation
 import (
 	"bytes"
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -90,33 +89,12 @@ func (c *Client) refreshToken() error {
 	}
 
 	c.token = tokenData.AccessToken
-	c.tokenExpiry = decodeTokenExpiry(c.token)
+	c.tokenExpiry = external.TokenExpiry(c.token)
+	if c.tokenExpiry.IsZero() {
+		log.Printf("[Formation] Failed to decode JWT expiry; the token will be refreshed on every request")
+	}
 	log.Printf("[Formation] Token refreshed, expires in %.0fs", tokenData.ExpiresIn)
 	return nil
-}
-
-// decodeTokenExpiry extracts the exp claim from a JWT without verifying the
-// signature. Returns the zero time if the token can't be decoded, which
-// forces a refresh on the next request.
-func decodeTokenExpiry(token string) time.Time {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		log.Printf("[Formation] Failed to decode JWT: not a three-part token")
-		return time.Time{}
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		log.Printf("[Formation] Failed to decode JWT: %v", err)
-		return time.Time{}
-	}
-	var claims struct {
-		Exp int64 `json:"exp"`
-	}
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		log.Printf("[Formation] Failed to decode JWT claims: %v", err)
-		return time.Time{}
-	}
-	return time.Unix(claims.Exp, 0)
 }
 
 func (c *Client) accessToken(forceRefresh bool) (string, error) {

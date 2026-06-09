@@ -7,6 +7,7 @@ import (
 	"log"
 	"path"
 	"sync"
+	"time"
 
 	irodsfs "github.com/cyverse/go-irodsclient/fs"
 	"github.com/cyverse/go-irodsclient/irods/common"
@@ -51,6 +52,13 @@ func (d *DataStore) filesystem() (*irodsfs.FileSystem, error) {
 	// The Python service had no metadata cache; disable it so existence
 	// checks observe deletions made by external jobs immediately.
 	fsConfig.Cache.NoCache = true
+	// The Python service disabled the connection timeout entirely; the
+	// library's 1m/5m defaults are too short for deleting large home
+	// collections, so raise them well past any expected operation.
+	fsConfig.MetadataConnection.OperationTimeout = types.Duration(30 * time.Minute)
+	fsConfig.MetadataConnection.LongOperationTimeout = types.Duration(12 * time.Hour)
+	fsConfig.IOConnection.OperationTimeout = types.Duration(30 * time.Minute)
+	fsConfig.IOConnection.LongOperationTimeout = types.Duration(12 * time.Hour)
 
 	fs, err := irodsfs.NewFileSystem(account, fsConfig)
 	if err != nil {
@@ -238,8 +246,6 @@ func (d *DataStore) EnsureUserExists(username string) error {
 // as a password-reset operation.
 func (d *DataStore) CreateUserWithPermissions(username, password, ipcservicesUser, adminUser string) error {
 	log.Printf("Creating data store user: %s", username)
-	d.HealthCheck()
-
 	if err := d.EnsureUserExists(username); err != nil {
 		return err
 	}
@@ -276,9 +282,16 @@ func (d *DataStore) RegisterService(username, irodsPath string, irodsUser *strin
 	if err != nil {
 		return err
 	}
-	fullPath := path.Join(d.UserHome(username), irodsPath)
+	// Match the Python os.path.join contract: an absolute irodsPath is used
+	// as-is rather than nested under the user's home collection.
+	fullPath := irodsPath
+	if !path.IsAbs(irodsPath) {
+		fullPath = path.Join(d.UserHome(username), irodsPath)
+	}
 
-	if !fs.ExistsDir(fullPath) {
+	// A pre-existing data object at the path also counts as existing; the
+	// Python service skipped creation and just set permissions on it.
+	if !fs.Exists(fullPath) {
 		if err := fs.MakeDir(fullPath, true); err != nil {
 			return err
 		}
@@ -288,8 +301,11 @@ func (d *DataStore) RegisterService(username, irodsPath string, irodsUser *strin
 	if err != nil {
 		return err
 	}
-	if err := d.setInheritIfNeeded(fs, fullPath); err != nil {
-		return err
+	// ACL inheritance only applies to collections, not data objects.
+	if fs.ExistsDir(fullPath) {
+		if err := d.setInheritIfNeeded(fs, fullPath); err != nil {
+			return err
+		}
 	}
 	if err := d.setOwnerIfNeeded(fs, currentPerms, username, fullPath); err != nil {
 		return err

@@ -136,7 +136,10 @@ func TestTruthy(t *testing.T) {
 		{"true", true, true},
 		{"zero", 0.0, false},
 		{"number", 2.0, true},
-		{"map", map[string]any{}, true},
+		{"empty map", map[string]any{}, false},
+		{"map", map[string]any{"k": "v"}, true},
+		{"empty list", []any{}, false},
+		{"list", []any{"x"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

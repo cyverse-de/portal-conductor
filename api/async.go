@@ -64,6 +64,10 @@ func truthy(v any) bool {
 		return val != ""
 	case float64:
 		return val != 0
+	case []any:
+		return len(val) > 0
+	case map[string]any:
+		return len(val) > 0
 	default:
 		return true
 	}
@@ -164,6 +168,9 @@ func (a *API) deleteUserAsync(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	analysisID, _ := result["analysis_id"].(string)
+	if analysisID == "" {
+		return fmt.Errorf("formation launch response is missing analysis_id; the deletion may not have been submitted: %v", result)
+	}
 	status, ok := result["status"].(string)
 	if !ok {
 		status = "Submitted"

@@ -49,14 +49,13 @@ func New(cfg config.SMTP) *Service {
 	}
 }
 
-// Send sends an email and reports success, logging failures rather than
-// returning them, like EmailService.send_email.
-func (s *Service) Send(to []string, subject string, textBody, htmlBody, fromEmail *string, bcc []string) bool {
+// Send sends an email, returning the cause of any failure.
+func (s *Service) Send(to []string, subject string, textBody, htmlBody, fromEmail *string, bcc []string) error {
 	if err := s.send(to, subject, textBody, htmlBody, fromEmail, bcc); err != nil {
 		log.Printf("Failed to send email: %v", err)
-		return false
+		return err
 	}
-	return true
+	return nil
 }
 
 func (s *Service) send(to []string, subject string, textBody, htmlBody, fromEmail *string, bcc []string) error {

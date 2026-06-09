@@ -4,6 +4,7 @@
 package api
 
 import (
+	"bytes"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -106,7 +107,10 @@ type validationError struct {
 }
 
 // decodeBody parses the JSON request body into dst and verifies the required
-// top-level keys are present, producing a FastAPI-style 422 otherwise.
+// top-level keys are present and non-null, producing a FastAPI-style 422
+// otherwise. Explicit nulls must be rejected here: they would otherwise
+// unmarshal to zero values and reach LDAP/iRODS as empty strings (e.g. a null
+// password becomes a server-generated random password via RFC 3062).
 func decodeBody(r *http.Request, dst any, required ...string) error {
 	body, err := io.ReadAll(http.MaxBytesReader(nil, r.Body, 10<<20))
 	if err != nil {
@@ -129,8 +133,13 @@ func decodeBody(r *http.Request, dst any, required ...string) error {
 
 	var missing []validationError
 	for _, field := range required {
-		if _, ok := fields[field]; !ok {
+		raw, ok := fields[field]
+		if !ok {
 			missing = append(missing, validationError{Type: "missing", Loc: []string{"body", field}, Msg: "Field required"})
+			continue
+		}
+		if string(bytes.TrimSpace(raw)) == "null" {
+			missing = append(missing, validationError{Type: "none_forbidden", Loc: []string{"body", field}, Msg: "Field may not be null"})
 		}
 	}
 	if len(missing) > 0 {

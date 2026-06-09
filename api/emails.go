@@ -19,9 +19,9 @@ func (a *API) sendEmail(w http.ResponseWriter, r *http.Request) error {
 		return httpErrorf(http.StatusBadRequest, "Either text_body or html_body must be provided")
 	}
 
-	if !a.email.Send(req.To, req.Subject, req.TextBody, req.HTMLBody, req.FromEmail, req.BCC) {
+	if err := a.email.Send(req.To, req.Subject, req.TextBody, req.HTMLBody, req.FromEmail, req.BCC); err != nil {
 		return httpErrorf(http.StatusInternalServerError, "Failed to send email")
 	}
-	writeJSON(w, http.StatusOK, kinds.EmailResponse{Success: true, Message: "Email sent successfully"})
+	writeJSON(w, http.StatusOK, kinds.GenericResponse{Success: true, Message: "Email sent successfully"})
 	return nil
 }

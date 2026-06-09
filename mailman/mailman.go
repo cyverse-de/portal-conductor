@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cyverse-de/portal-conductor/external"
@@ -112,7 +114,9 @@ func (c *Client) RemoveMember(listName, email string) error {
 // MemberExists reports whether email is subscribed to listName by scanning
 // the roster page for the email's first letter.
 func (c *Client) MemberExists(listName, email string) (bool, error) {
-	decoded, err := url.QueryUnescape(email)
+	// PathUnescape, not QueryUnescape: '+' is a literal character in the
+	// local part of an email address, not an encoded space.
+	decoded, err := url.PathUnescape(email)
 	if err != nil {
 		decoded = email
 	}
@@ -135,31 +139,42 @@ func (c *Client) MemberExists(listName, email string) (bool, error) {
 }
 
 // ListMembers returns the sorted member emails of listName, collected across
-// all letter-paginated roster pages (a-z, 0-9).
+// all letter-paginated roster pages (a-z, 0-9). Pages are fetched
+// concurrently since the 36 sequential round trips dominate latency.
 func (c *Client) ListMembers(listName string) ([]string, error) {
-	emails := make(map[string]struct{})
+	const maxConcurrentPages = 8
+	var (
+		mu     sync.Mutex
+		wg     sync.WaitGroup
+		emails = make(map[string]struct{})
+		sem    = make(chan struct{}, maxConcurrentPages)
+	)
 	for _, letter := range "abcdefghijklmnopqrstuvwxyz0123456789" {
-		params := url.Values{"adminpw": {c.password}, "letter": {string(letter)}}
-		body, err := c.do(http.MethodGet, c.adminURL(listName, "members"), params)
-		if err != nil {
-			// A single missing letter page shouldn't fail the whole listing.
-			log.Printf("Failed to fetch letter page '%c' for list %s: %v", letter, listName, err)
-			continue
-		}
-		for _, match := range rosterEmailPattern.FindAllString(body, -1) {
-			email := strings.ToLower(match)
-			// Skip Mailman's own boilerplate addresses.
-			if strings.HasSuffix(email, "@mailman.org") || strings.HasSuffix(email, "@example.com") {
-				continue
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			params := url.Values{"adminpw": {c.password}, "letter": {string(letter)}}
+			body, err := c.do(http.MethodGet, c.adminURL(listName, "members"), params)
+			if err != nil {
+				// A single missing letter page shouldn't fail the whole listing.
+				log.Printf("Failed to fetch letter page '%c' for list %s: %v", letter, listName, err)
+				return
 			}
-			emails[email] = struct{}{}
-		}
+			mu.Lock()
+			defer mu.Unlock()
+			for _, match := range rosterEmailPattern.FindAllString(body, -1) {
+				email := strings.ToLower(match)
+				// Skip Mailman's own boilerplate addresses.
+				if strings.HasSuffix(email, "@mailman.org") || strings.HasSuffix(email, "@example.com") {
+					continue
+				}
+				emails[email] = struct{}{}
+			}
+		}()
 	}
+	wg.Wait()
 
-	result := make([]string, 0, len(emails))
-	for email := range emails {
-		result = append(result, email)
-	}
-	slices.Sort(result)
-	return result, nil
+	return slices.Sorted(maps.Keys(emails)), nil
 }

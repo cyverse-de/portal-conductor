@@ -218,6 +218,14 @@ func fromEnv() *Config {
 		Port:     envInt("SSL_PORT", 8443),
 	}
 	c.Server = Server{HTTPPort: envInt("HTTP_PORT", 8000)}
+	// Auth defaults to enabled, so the env fallback must be able to supply
+	// credentials; otherwise every protected endpoint rejects all requests.
+	c.Auth = Auth{
+		Enabled:  envBool("AUTH_ENABLED", true),
+		Username: os.Getenv("AUTH_USERNAME"),
+		Password: os.Getenv("AUTH_PASSWORD"),
+		Realm:    envOr("AUTH_REALM", "Portal Conductor API"),
+	}
 	c.LDAP = LDAP{
 		URL:            os.Getenv("LDAP_URL"),
 		User:           os.Getenv("LDAP_USER"),
@@ -244,6 +252,15 @@ func fromEnv() *Config {
 		Enabled:  envBool("MAILMAN_ENABLED", false),
 		URL:      os.Getenv("MAILMAN_URL"),
 		Password: os.Getenv("MAILMAN_PASSWORD"),
+	}
+	c.SMTP = SMTP{
+		Host:     envOr("SMTP_HOST", "localhost"),
+		Port:     FlexString(envOr("SMTP_PORT", "25")),
+		User:     os.Getenv("SMTP_USER"),
+		Password: os.Getenv("SMTP_PASSWORD"),
+		UseTLS:   envBool("SMTP_USE_TLS", false),
+		UseSSL:   envBool("SMTP_USE_SSL", false),
+		From:     envOr("SMTP_FROM", "noreply@cyverse.org"),
 	}
 	c.PortalDB = PortalDB{
 		Host:     os.Getenv("PORTAL_DB_HOST"),
@@ -294,13 +311,28 @@ func LoadFrom(configFile string) *Config {
 	return fromEnv()
 }
 
+// RequiredField pairs a config field's dotted name with its value for
+// required-field validation.
+type RequiredField struct {
+	Name  string
+	Value string
+}
+
+// MissingFields returns the names of the fields whose values are empty.
+func MissingFields(fields []RequiredField) []string {
+	var missing []string
+	for _, f := range fields {
+		if f.Value == "" {
+			missing = append(missing, f.Name)
+		}
+	}
+	return missing
+}
+
 // Validate checks required fields and returns an error naming the first
 // missing one, matching the messages from validate_config in main.py.
 func (c *Config) Validate() error {
-	required := []struct {
-		name  string
-		value string
-	}{
+	required := []RequiredField{
 		{"ldap.url", c.LDAP.URL},
 		{"ldap.user", c.LDAP.User},
 		{"ldap.password", c.LDAP.Password},
@@ -316,14 +348,20 @@ func (c *Config) Validate() error {
 	}
 	if c.Mailman.Enabled {
 		required = append(required,
-			struct{ name, value string }{"mailman.url", c.Mailman.URL},
-			struct{ name, value string }{"mailman.password", c.Mailman.Password},
+			RequiredField{"mailman.url", c.Mailman.URL},
+			RequiredField{"mailman.password", c.Mailman.Password},
 		)
 	}
-	for _, f := range required {
-		if f.value == "" {
-			return fmt.Errorf("required configuration field '%s' is not set", f.name)
-		}
+	// With auth enabled but no credentials, authenticate() rejects every
+	// request; fail at startup instead of 401ing everything at runtime.
+	if c.Auth.Enabled {
+		required = append(required,
+			RequiredField{"auth.username", c.Auth.Username},
+			RequiredField{"auth.password", c.Auth.Password},
+		)
+	}
+	if missing := MissingFields(required); len(missing) > 0 {
+		return fmt.Errorf("required configuration field '%s' is not set", missing[0])
 	}
 	return nil
 }

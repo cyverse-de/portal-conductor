@@ -6,6 +6,7 @@ import (
 
 	"github.com/cyverse-de/portal-conductor/kinds"
 	"github.com/cyverse-de/portal-conductor/ldapclient"
+	"github.com/cyverse-de/portal-conductor/userdel"
 )
 
 var createUserRequiredFields = []string{
@@ -73,70 +74,13 @@ func (a *API) changePassword(w http.ResponseWriter, r *http.Request) error {
 func (a *API) deleteUser(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
 
-	if err := a.deleteUserFromDatastore(username); err != nil {
+	if err := userdel.FromDatastore(a.ds, username, false); err != nil {
 		return err
 	}
-	if err := a.deleteUserFromLDAP(username); err != nil {
+	if err := userdel.FromLDAP(a.ldap, username, false); err != nil {
 		return err
 	}
 
 	writeJSON(w, http.StatusOK, kinds.UserResponse{User: username})
-	return nil
-}
-
-func (a *API) deleteUserFromDatastore(username string) error {
-	log.Printf("Deleting datastore files and account for user: %s", username)
-	exists, err := a.ds.UserExists(username)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		log.Printf("User %s does not exist in datastore, skipping datastore deletion", username)
-		return nil
-	}
-	if err := a.ds.DeleteHome(username); err != nil {
-		return err
-	}
-	log.Printf("Deleted home directory for user: %s", username)
-	if err := a.ds.DeleteUser(username); err != nil {
-		return err
-	}
-	log.Printf("Deleted datastore user: %s", username)
-	return nil
-}
-
-func (a *API) deleteUserFromLDAP(username string) error {
-	log.Printf("Checking if user %s exists in LDAP", username)
-	entry, err := a.ldap.GetUser(username)
-	if err != nil {
-		return err
-	}
-	if entry == nil {
-		log.Printf("User %s does not exist in LDAP, skipping LDAP deletion", username)
-		return nil
-	}
-
-	log.Printf("Deleting LDAP user: %s", username)
-	groups, err := a.ldap.GetUserGroups(username)
-	if err != nil {
-		return err
-	}
-	for _, group := range groups {
-		if len(group.Attrs["cn"]) == 0 {
-			continue
-		}
-		groupName := group.Attrs["cn"][0]
-		log.Printf("Removing user %s from group %s", username, groupName)
-		if err := a.ldap.RemoveUserFromGroup(username, groupName); err != nil {
-			return err
-		}
-		log.Printf("Removed user %s from group %s", username, groupName)
-	}
-
-	log.Printf("Deleting user %s from LDAP", username)
-	if err := a.ldap.DeleteUser(username); err != nil {
-		return err
-	}
-	log.Printf("Deleted LDAP user: %s", username)
 	return nil
 }
