@@ -16,6 +16,14 @@ func (a *API) requireMailman() error {
 }
 
 // listMailingListMembers returns all member emails of a mailing list.
+// @Summary      List mailing list members
+// @Description  Retrieve a list of members in a mailing list.
+// @Produce      json
+// @Param        listname path string true "Mailing list name"
+// @Success      200 {object} kinds.MailingListMembersResponse
+// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Mailman integration disabled)"
+// @Security     BasicAuth
+// @Router       /mailinglists/{listname}/members [get]
 func (a *API) listMailingListMembers(w http.ResponseWriter, r *http.Request) error {
 	if err := a.requireMailman(); err != nil {
 		return err
@@ -31,6 +39,17 @@ func (a *API) listMailingListMembers(w http.ResponseWriter, r *http.Request) err
 }
 
 // addToMailingList subscribes an email address to a mailing list.
+// @Summary      Add to mailing list
+// @Description  Subscribe an email address to a mailing list.
+// @Accept       json
+// @Produce      json
+// @Param        listname path string true "Mailing list name"
+// @Param        request body kinds.MailingListMemberRequest true "Mailing list member details"
+// @Success      200 {object} kinds.GenericResponse
+// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Mailman integration disabled)"
+// @Security     BasicAuth
+// @Router       /mailinglists/{listname}/members [post]
 func (a *API) addToMailingList(w http.ResponseWriter, r *http.Request) error {
 	if err := a.requireMailman(); err != nil {
 		return err
@@ -53,6 +72,15 @@ func (a *API) addToMailingList(w http.ResponseWriter, r *http.Request) error {
 }
 
 // removeFromMailingList unsubscribes an email address from a mailing list.
+// @Summary      Remove from mailing list
+// @Description  Unsubscribe an email address from a mailing list.
+// @Produce      json
+// @Param        listname path string true "Mailing list name"
+// @Param        email path string true "Email address to unsubscribe"
+// @Success      200 {object} kinds.GenericResponse
+// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Mailman integration disabled)"
+// @Security     BasicAuth
+// @Router       /mailinglists/{listname}/members/{email} [delete]
 func (a *API) removeFromMailingList(w http.ResponseWriter, r *http.Request) error {
 	if err := a.requireMailman(); err != nil {
 		return err
@@ -71,6 +99,15 @@ func (a *API) removeFromMailingList(w http.ResponseWriter, r *http.Request) erro
 }
 
 // checkEmailInMailingList reports whether an email address is subscribed.
+// @Summary      Check email in mailing list
+// @Description  Check whether an email address is subscribed to a mailing list.
+// @Produce      json
+// @Param        listname path string true "Mailing list name"
+// @Param        email path string true "Email address"
+// @Success      200 {object} kinds.EmailExistsResponse
+// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Mailman integration disabled)"
+// @Security     BasicAuth
+// @Router       /mailinglists/{listname}/members/{email}/exists [get]
 func (a *API) checkEmailInMailingList(w http.ResponseWriter, r *http.Request) error {
 	if err := a.requireMailman(); err != nil {
 		return err

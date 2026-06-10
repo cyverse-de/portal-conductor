@@ -184,3 +184,15 @@ type LDAPGroupInfo struct {
 	SambaSID       *string   `json:"samba_sid"`
 	ObjectClasses  *[]string `json:"object_classes"`
 }
+
+// ValidationError mirrors one entry of FastAPI's 422 validation response.
+type ValidationError struct {
+	Type string   `json:"type" example:"missing"`
+	Loc  []string `json:"loc" example:"body,username"`
+	Msg  string   `json:"msg" example:"Field required"`
+}
+
+// ValidationErrorResponse represents the HTTP 422 validation error body.
+type ValidationErrorResponse struct {
+	Detail []ValidationError `json:"detail"`
+}

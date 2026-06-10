@@ -2,11 +2,18 @@ FROM golang:1.24 AS build
 
 WORKDIR /src
 
+# Install swag for swagger documentation generation
+RUN go install github.com/swaggo/swag/cmd/swag@latest
+
 # Download dependencies first for better caching
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+
+# Generate swagger documentation before building
+RUN swag init --parseDependency -g main.go -d ./,api/,kinds/
+
 RUN CGO_ENABLED=0 go build -o /portal-conductor .
 
 FROM debian:bookworm-slim

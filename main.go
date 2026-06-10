@@ -22,8 +22,15 @@ import (
 	"github.com/cyverse-de/portal-conductor/ldapclient"
 	"github.com/cyverse-de/portal-conductor/mailman"
 	"github.com/cyverse-de/portal-conductor/terrain"
+
+	_ "github.com/cyverse-de/portal-conductor/docs"
 )
 
+// @title           Portal Conductor API
+// @version         1.0
+// @description     API for managing CyVerse users, LDAP, DataStore, and email notifications.
+// @BasePath        /
+// @securityDefinitions.basic BasicAuth
 func main() {
 	// go-irodsclient logs connection-pool details at info level through
 	// logrus; only surface its warnings and errors.

@@ -19,9 +19,11 @@ import (
 	"github.com/cyverse-de/portal-conductor/emailsvc"
 	"github.com/cyverse-de/portal-conductor/external"
 	"github.com/cyverse-de/portal-conductor/formation"
+	"github.com/cyverse-de/portal-conductor/kinds"
 	"github.com/cyverse-de/portal-conductor/ldapclient"
 	"github.com/cyverse-de/portal-conductor/mailman"
 	"github.com/cyverse-de/portal-conductor/terrain"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
 const greetingMessage = "Hello from portal-conductor."
@@ -99,13 +101,6 @@ func writeDetail(w http.ResponseWriter, status int, detail any) {
 	writeJSON(w, status, map[string]any{"detail": detail})
 }
 
-// validationError mirrors one entry of FastAPI's 422 validation response.
-type validationError struct {
-	Type string   `json:"type"`
-	Loc  []string `json:"loc"`
-	Msg  string   `json:"msg"`
-}
-
 // decodeBody parses the JSON request body into dst and verifies the required
 // top-level keys are present and non-null, producing a FastAPI-style 422
 // otherwise. Explicit nulls must be rejected here: they would otherwise
@@ -114,32 +109,32 @@ type validationError struct {
 func decodeBody(r *http.Request, dst any, required ...string) error {
 	body, err := io.ReadAll(http.MaxBytesReader(nil, r.Body, 10<<20))
 	if err != nil {
-		return &httpError{status: http.StatusUnprocessableEntity, detail: []validationError{
+		return &httpError{status: http.StatusUnprocessableEntity, detail: []kinds.ValidationError{
 			{Type: "json_invalid", Loc: []string{"body"}, Msg: "Failed to read request body"},
 		}}
 	}
 
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil {
-		return &httpError{status: http.StatusUnprocessableEntity, detail: []validationError{
+		return &httpError{status: http.StatusUnprocessableEntity, detail: []kinds.ValidationError{
 			{Type: "json_invalid", Loc: []string{"body"}, Msg: "JSON decode error"},
 		}}
 	}
 	if err := json.Unmarshal(body, dst); err != nil {
-		return &httpError{status: http.StatusUnprocessableEntity, detail: []validationError{
+		return &httpError{status: http.StatusUnprocessableEntity, detail: []kinds.ValidationError{
 			{Type: "value_error", Loc: []string{"body"}, Msg: err.Error()},
 		}}
 	}
 
-	var missing []validationError
+	var missing []kinds.ValidationError
 	for _, field := range required {
 		raw, ok := fields[field]
 		if !ok {
-			missing = append(missing, validationError{Type: "missing", Loc: []string{"body", field}, Msg: "Field required"})
+			missing = append(missing, kinds.ValidationError{Type: "missing", Loc: []string{"body", field}, Msg: "Field required"})
 			continue
 		}
 		if string(bytes.TrimSpace(raw)) == "null" {
-			missing = append(missing, validationError{Type: "none_forbidden", Loc: []string{"body", field}, Msg: "Field may not be null"})
+			missing = append(missing, kinds.ValidationError{Type: "none_forbidden", Loc: []string{"body", field}, Msg: "Field may not be null"})
 		}
 	}
 	if len(missing) > 0 {
@@ -237,6 +232,11 @@ func (a *API) Handler() http.Handler {
 
 	// Health check; intentionally unauthenticated for load balancers.
 	mux.Handle("GET /{$}", a.handle(greeting))
+
+	// Swagger UI; unauthenticated.
+	mux.Handle("/docs/", httpSwagger.Handler(
+		httpSwagger.URL("/docs/doc.json"),
+	))
 
 	// User management
 	mux.Handle("POST /users", a.protected(a.addUser))

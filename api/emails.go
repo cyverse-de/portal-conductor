@@ -7,6 +7,17 @@ import (
 )
 
 // sendEmail sends an email via the configured SMTP server.
+// @Summary      Send email
+// @Description  Send an email using SMTP.
+// @Accept       json
+// @Produce      json
+// @Param        request body kinds.EmailRequest true "Email details"
+// @Success      200 {object} kinds.GenericResponse
+// @Failure      400 {object} kinds.GenericResponse "Either text_body or html_body must be provided"
+// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Failure      500 {object} kinds.GenericResponse "Failed to send email"
+// @Security     BasicAuth
+// @Router       /emails/send [post]
 func (a *API) sendEmail(w http.ResponseWriter, r *http.Request) error {
 	var req kinds.EmailRequest
 	if err := decodeBody(r, &req, "to", "subject"); err != nil {
