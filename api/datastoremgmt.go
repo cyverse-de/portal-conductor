@@ -17,6 +17,7 @@ import (
 // @Success      200 {object} kinds.UserResponse
 // @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
 // @Failure      500 {object} kinds.GenericResponse "Failed to create datastore user"
+// @Security     BasicAuth
 // @Router       /datastore/users [post]
 func (a *API) createDatastoreUser(w http.ResponseWriter, r *http.Request) error {
 	var req kinds.DatastoreUserRequest
@@ -38,6 +39,7 @@ func (a *API) createDatastoreUser(w http.ResponseWriter, r *http.Request) error 
 // @Param        username path string true "Username"
 // @Success      200 {object} kinds.UserExistsResponse
 // @Failure      500 {object} kinds.GenericResponse "Failed to check user existence in data store"
+// @Security     BasicAuth
 // @Router       /datastore/users/{username}/exists [get]
 func (a *API) checkUserExistsInDatastore(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
@@ -61,6 +63,7 @@ func (a *API) checkUserExistsInDatastore(w http.ResponseWriter, r *http.Request)
 // @Success      200 {object} kinds.GenericResponse
 // @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
 // @Failure      500 {object} kinds.GenericResponse "Failed to register datastore service"
+// @Security     BasicAuth
 // @Router       /datastore/users/{username}/services [post]
 func (a *API) registerDatastoreService(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")

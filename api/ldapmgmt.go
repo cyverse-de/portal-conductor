@@ -19,6 +19,7 @@ import (
 // @Param        request body kinds.CreateUserRequest true "User Details"
 // @Success      200 {object} kinds.UserResponse
 // @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Security     BasicAuth
 // @Router       /ldap/users [post]
 func (a *API) createLDAPUser(w http.ResponseWriter, r *http.Request) error {
 	var user kinds.CreateUserRequest
@@ -40,6 +41,7 @@ func (a *API) createLDAPUser(w http.ResponseWriter, r *http.Request) error {
 // @Param        username path string true "Username"
 // @Param        groupname path string true "Group name"
 // @Success      200 {object} kinds.GenericResponse
+// @Security     BasicAuth
 // @Router       /ldap/users/{username}/groups/{groupname} [post]
 func (a *API) addUserToLDAPGroup(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
@@ -67,6 +69,7 @@ func (a *API) addUserToLDAPGroup(w http.ResponseWriter, r *http.Request) error {
 // @Produce      json
 // @Param        username path string true "Username"
 // @Success      200 {array} string
+// @Security     BasicAuth
 // @Router       /ldap/users/{username}/groups [get]
 func (a *API) getUserLDAPGroups(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
@@ -92,6 +95,7 @@ func (a *API) getUserLDAPGroups(w http.ResponseWriter, r *http.Request) error {
 // @Param        username path string true "Username"
 // @Param        groupname path string true "Group name"
 // @Success      200 {object} kinds.GenericResponse
+// @Security     BasicAuth
 // @Router       /ldap/users/{username}/groups/{groupname} [delete]
 func (a *API) removeUserFromLDAPGroup(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
@@ -114,6 +118,7 @@ func (a *API) removeUserFromLDAPGroup(w http.ResponseWriter, r *http.Request) er
 // @Param        username path string true "Username"
 // @Success      200 {object} kinds.UserLDAPInfo
 // @Failure      404 {object} kinds.GenericResponse "User not found"
+// @Security     BasicAuth
 // @Router       /ldap/users/{username} [get]
 func (a *API) getUserLDAPInfo(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
@@ -134,6 +139,7 @@ func (a *API) getUserLDAPInfo(w http.ResponseWriter, r *http.Request) error {
 // @Description  Retrieve all posixGroup entries in LDAP.
 // @Produce      json
 // @Success      200 {array} kinds.LDAPGroupInfo
+// @Security     BasicAuth
 // @Router       /ldap/groups [get]
 func (a *API) getLDAPGroups(w http.ResponseWriter, r *http.Request) error {
 	groups, err := a.ldap.GetGroups()
@@ -161,6 +167,7 @@ func (a *API) getLDAPGroups(w http.ResponseWriter, r *http.Request) error {
 // @Produce      json
 // @Param        username path string true "Username"
 // @Success      200 {object} kinds.UserExistsResponse
+// @Security     BasicAuth
 // @Router       /ldap/users/{username}/exists [get]
 func (a *API) checkUserExistsInLDAP(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
@@ -185,6 +192,7 @@ func (a *API) checkUserExistsInLDAP(w http.ResponseWriter, r *http.Request) erro
 // @Failure      400 {object} kinds.GenericResponse "Value cannot be empty"
 // @Failure      404 {object} kinds.GenericResponse "User not found"
 // @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Security     BasicAuth
 // @Router       /ldap/users/{username}/attributes/{attribute} [put]
 func (a *API) modifyUserLDAPAttribute(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")

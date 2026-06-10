@@ -30,6 +30,7 @@ import (
 // @version         1.0
 // @description     API for managing CyVerse users, LDAP, DataStore, and email notifications.
 // @BasePath        /
+// @securityDefinitions.basic BasicAuth
 func main() {
 	// go-irodsclient logs connection-pool details at info level through
 	// logrus; only surface its warnings and errors.

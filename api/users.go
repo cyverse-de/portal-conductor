@@ -24,6 +24,7 @@ var createUserRequiredFields = []string{
 // @Failure      400 {object} kinds.GenericResponse "Bad request"
 // @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
 // @Failure      500 {object} kinds.GenericResponse "Internal server error"
+// @Security     BasicAuth
 // @Router       /users [post]
 func (a *API) addUser(w http.ResponseWriter, r *http.Request) error {
 	var user kinds.CreateUserRequest
@@ -52,6 +53,7 @@ func (a *API) addUser(w http.ResponseWriter, r *http.Request) error {
 // @Param        request body kinds.PasswordChangeRequest true "Password details"
 // @Success      200 {object} kinds.ValidateResponse
 // @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Security     BasicAuth
 // @Router       /users/{username}/validate [post]
 func (a *API) validateCredentials(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
@@ -77,6 +79,7 @@ func (a *API) validateCredentials(w http.ResponseWriter, r *http.Request) error 
 // @Param        request body kinds.PasswordChangeRequest true "New password details"
 // @Success      200 {object} kinds.UserResponse
 // @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Security     BasicAuth
 // @Router       /users/{username}/password [post]
 func (a *API) changePassword(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
@@ -104,6 +107,7 @@ func (a *API) changePassword(w http.ResponseWriter, r *http.Request) error {
 // @Produce      json
 // @Param        username path string true "Username"
 // @Success      200 {object} kinds.UserResponse
+// @Security     BasicAuth
 // @Router       /users/{username} [delete]
 func (a *API) deleteUser(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")

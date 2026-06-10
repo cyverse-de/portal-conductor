@@ -22,6 +22,7 @@ func (a *API) requireMailman() error {
 // @Param        listname path string true "Mailing list name"
 // @Success      200 {object} kinds.MailingListMembersResponse
 // @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Mailman integration disabled)"
+// @Security     BasicAuth
 // @Router       /mailinglists/{listname}/members [get]
 func (a *API) listMailingListMembers(w http.ResponseWriter, r *http.Request) error {
 	if err := a.requireMailman(); err != nil {
@@ -47,6 +48,7 @@ func (a *API) listMailingListMembers(w http.ResponseWriter, r *http.Request) err
 // @Success      200 {object} kinds.GenericResponse
 // @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
 // @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Mailman integration disabled)"
+// @Security     BasicAuth
 // @Router       /mailinglists/{listname}/members [post]
 func (a *API) addToMailingList(w http.ResponseWriter, r *http.Request) error {
 	if err := a.requireMailman(); err != nil {
@@ -77,6 +79,7 @@ func (a *API) addToMailingList(w http.ResponseWriter, r *http.Request) error {
 // @Param        email path string true "Email address to unsubscribe"
 // @Success      200 {object} kinds.GenericResponse
 // @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Mailman integration disabled)"
+// @Security     BasicAuth
 // @Router       /mailinglists/{listname}/members/{email} [delete]
 func (a *API) removeFromMailingList(w http.ResponseWriter, r *http.Request) error {
 	if err := a.requireMailman(); err != nil {
@@ -103,6 +106,7 @@ func (a *API) removeFromMailingList(w http.ResponseWriter, r *http.Request) erro
 // @Param        email path string true "Email address"
 // @Success      200 {object} kinds.EmailExistsResponse
 // @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Mailman integration disabled)"
+// @Security     BasicAuth
 // @Router       /mailinglists/{listname}/members/{email}/exists [get]
 func (a *API) checkEmailInMailingList(w http.ResponseWriter, r *http.Request) error {
 	if err := a.requireMailman(); err != nil {

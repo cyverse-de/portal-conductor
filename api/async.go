@@ -144,6 +144,7 @@ func (a *API) usernameParamID(client *formation.Client, systemID, appID string) 
 // @Param        username path string true "Username"
 // @Success      200 {object} kinds.AsyncDeleteUserResponse
 // @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Formation not configured)"
+// @Security     BasicAuth
 // @Router       /async/users/{username} [delete]
 func (a *API) deleteUserAsync(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
@@ -200,6 +201,7 @@ func (a *API) deleteUserAsync(w http.ResponseWriter, r *http.Request) error {
 // @Param        analysis_id path string true "Analysis ID"
 // @Success      200 {object} kinds.AnalysisStatusResponse
 // @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Formation not configured)"
+// @Security     BasicAuth
 // @Router       /async/status/{analysis_id} [get]
 func (a *API) getDeletionStatus(w http.ResponseWriter, r *http.Request) error {
 	analysisID := r.PathValue("analysis_id")
@@ -236,6 +238,7 @@ func (a *API) getDeletionStatus(w http.ResponseWriter, r *http.Request) error {
 // @Param        status query string false "Status filter (defaults to Running)"
 // @Success      200 {object} kinds.AnalysesListResponse
 // @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Formation not configured)"
+// @Security     BasicAuth
 // @Router       /async/analyses [get]
 func (a *API) listAnalyses(w http.ResponseWriter, r *http.Request) error {
 	status := r.URL.Query().Get("status")
@@ -282,6 +285,7 @@ func (a *API) listAnalyses(w http.ResponseWriter, r *http.Request) error {
 // @Param        analysis_id path string true "Analysis ID"
 // @Success      200 {object} interface{} "Returns raw analysis JSON representation"
 // @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Formation not configured)"
+// @Security     BasicAuth
 // @Router       /async/analyses/{analysis_id}/details [get]
 func (a *API) getAnalysisDetails(w http.ResponseWriter, r *http.Request) error {
 	analysisID := r.PathValue("analysis_id")

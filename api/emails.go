@@ -16,6 +16,7 @@ import (
 // @Failure      400 {object} kinds.GenericResponse "Either text_body or html_body must be provided"
 // @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
 // @Failure      500 {object} kinds.GenericResponse "Failed to send email"
+// @Security     BasicAuth
 // @Router       /emails/send [post]
 func (a *API) sendEmail(w http.ResponseWriter, r *http.Request) error {
 	var req kinds.EmailRequest

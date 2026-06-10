@@ -17,6 +17,11 @@ const docTemplate = `{
     "paths": {
         "/async/analyses": {
             "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "List deletion job analyses, optionally filtered by status (defaults to \"Running\").",
                 "produces": [
                     "application/json"
@@ -48,6 +53,11 @@ const docTemplate = `{
         },
         "/async/analyses/{analysis_id}/details": {
             "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Get the details of a specific deletion job analysis.",
                 "produces": [
                     "application/json"
@@ -78,6 +88,11 @@ const docTemplate = `{
         },
         "/async/status/{analysis_id}": {
             "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Check the status of a user deletion analysis job.",
                 "produces": [
                     "application/json"
@@ -110,6 +125,11 @@ const docTemplate = `{
         },
         "/async/users/{username}": {
             "delete": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Submit a request to delete a user asynchronously from all systems including the database.",
                 "produces": [
                     "application/json"
@@ -142,6 +162,11 @@ const docTemplate = `{
         },
         "/datastore/users": {
             "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Create user in iRODS / DataStore only (or reset password if user already exists).",
                 "consumes": [
                     "application/json"
@@ -185,6 +210,11 @@ const docTemplate = `{
         },
         "/datastore/users/{username}/exists": {
             "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Check whether a username exists in the DataStore.",
                 "produces": [
                     "application/json"
@@ -217,6 +247,11 @@ const docTemplate = `{
         },
         "/datastore/users/{username}/services": {
             "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Register DataStore services with the iRODS path and username.",
                 "consumes": [
                     "application/json"
@@ -267,6 +302,11 @@ const docTemplate = `{
         },
         "/emails/send": {
             "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Send an email using SMTP.",
                 "consumes": [
                     "application/json"
@@ -316,6 +356,11 @@ const docTemplate = `{
         },
         "/ldap/groups": {
             "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Retrieve all posixGroup entries in LDAP.",
                 "produces": [
                     "application/json"
@@ -336,6 +381,11 @@ const docTemplate = `{
         },
         "/ldap/users": {
             "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Create a user entry in LDAP only (without iRODS/DataStore setup).",
                 "consumes": [
                     "application/json"
@@ -373,6 +423,11 @@ const docTemplate = `{
         },
         "/ldap/users/{username}": {
             "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Retrieve the LDAP attributes of a user.",
                 "produces": [
                     "application/json"
@@ -405,6 +460,11 @@ const docTemplate = `{
         },
         "/ldap/users/{username}/attributes/{attribute}": {
             "put": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Update the value of a single attribute for an LDAP user.",
                 "consumes": [
                     "application/json"
@@ -468,6 +528,11 @@ const docTemplate = `{
         },
         "/ldap/users/{username}/exists": {
             "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Check whether a username exists in LDAP.",
                 "produces": [
                     "application/json"
@@ -494,6 +559,11 @@ const docTemplate = `{
         },
         "/ldap/users/{username}/groups": {
             "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Get list of LDAP groups the user belongs to.",
                 "produces": [
                     "application/json"
@@ -523,6 +593,11 @@ const docTemplate = `{
         },
         "/ldap/users/{username}/groups/{groupname}": {
             "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Add a user to a specific LDAP group.",
                 "produces": [
                     "application/json"
@@ -554,6 +629,11 @@ const docTemplate = `{
                 }
             },
             "delete": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Remove a user from a specific LDAP group.",
                 "produces": [
                     "application/json"
@@ -587,6 +667,11 @@ const docTemplate = `{
         },
         "/mailinglists/{listname}/members": {
             "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Retrieve a list of members in a mailing list.",
                 "produces": [
                     "application/json"
@@ -617,6 +702,11 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Subscribe an email address to a mailing list.",
                 "consumes": [
                     "application/json"
@@ -667,6 +757,11 @@ const docTemplate = `{
         },
         "/mailinglists/{listname}/members/{email}": {
             "delete": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Unsubscribe an email address from a mailing list.",
                 "produces": [
                     "application/json"
@@ -706,6 +801,11 @@ const docTemplate = `{
         },
         "/mailinglists/{listname}/members/{email}/exists": {
             "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Check whether an email address is subscribed to a mailing list.",
                 "produces": [
                     "application/json"
@@ -745,6 +845,11 @@ const docTemplate = `{
         },
         "/terrain/users/{username}/job-limits": {
             "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Get VICE job limits for a specific user.",
                 "produces": [
                     "application/json"
@@ -781,6 +886,11 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Set VICE concurrent-job limit for a specific user.",
                 "consumes": [
                     "application/json"
@@ -831,6 +941,11 @@ const docTemplate = `{
         },
         "/users": {
             "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Create a complete user account in both LDAP (with default groups) and DataStore.",
                 "consumes": [
                     "application/json"
@@ -880,6 +995,11 @@ const docTemplate = `{
         },
         "/users/{username}": {
             "delete": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Synchronously remove the user from the datastore and LDAP.",
                 "produces": [
                     "application/json"
@@ -906,6 +1026,11 @@ const docTemplate = `{
         },
         "/users/{username}/password": {
             "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Update the user's password in both LDAP and the datastore.",
                 "consumes": [
                     "application/json"
@@ -950,6 +1075,11 @@ const docTemplate = `{
         },
         "/users/{username}/validate": {
             "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
                 "description": "Validate user credentials against LDAP.",
                 "consumes": [
                     "application/json"
@@ -1369,6 +1499,11 @@ const docTemplate = `{
                     }
                 }
             }
+        }
+    },
+    "securityDefinitions": {
+        "BasicAuth": {
+            "type": "basic"
         }
     }
 }`

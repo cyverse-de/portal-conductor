@@ -270,6 +270,8 @@ paths:
           description: Service Unavailable (Formation not configured)
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: List analyses
   /async/analyses/{analysis_id}/details:
     get:
@@ -290,6 +292,8 @@ paths:
           description: Service Unavailable (Formation not configured)
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Get analysis details
   /async/status/{analysis_id}:
     get:
@@ -311,6 +315,8 @@ paths:
           description: Service Unavailable (Formation not configured)
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Get deletion status
   /async/users/{username}:
     delete:
@@ -333,6 +339,8 @@ paths:
           description: Service Unavailable (Formation not configured)
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Delete user asynchronously
   /datastore/users:
     post:
@@ -362,6 +370,8 @@ paths:
           description: Failed to create datastore user
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Create datastore user
   /datastore/users/{username}/exists:
     get:
@@ -383,6 +393,8 @@ paths:
           description: Failed to check user existence in data store
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Check user datastore existence
   /datastore/users/{username}/services:
     post:
@@ -416,6 +428,8 @@ paths:
           description: Failed to register datastore service
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Register datastore service
   /emails/send:
     post:
@@ -448,6 +462,8 @@ paths:
           description: Failed to send email
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Send email
   /ldap/groups:
     get:
@@ -461,6 +477,8 @@ paths:
             items:
               $ref: '#/definitions/kinds.LDAPGroupInfo'
             type: array
+      security:
+      - BasicAuth: []
       summary: Get LDAP groups
   /ldap/users:
     post:
@@ -485,6 +503,8 @@ paths:
           description: Validation error
           schema:
             $ref: '#/definitions/kinds.ValidationErrorResponse'
+      security:
+      - BasicAuth: []
       summary: Create LDAP user
   /ldap/users/{username}:
     get:
@@ -506,6 +526,8 @@ paths:
           description: User not found
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Get LDAP user info
   /ldap/users/{username}/attributes/{attribute}:
     put:
@@ -548,6 +570,8 @@ paths:
           description: Validation error
           schema:
             $ref: '#/definitions/kinds.ValidationErrorResponse'
+      security:
+      - BasicAuth: []
       summary: Modify user LDAP attribute
   /ldap/users/{username}/exists:
     get:
@@ -565,6 +589,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/kinds.UserExistsResponse'
+      security:
+      - BasicAuth: []
       summary: Check user LDAP existence
   /ldap/users/{username}/groups:
     get:
@@ -584,6 +610,8 @@ paths:
             items:
               type: string
             type: array
+      security:
+      - BasicAuth: []
       summary: Get user LDAP groups
   /ldap/users/{username}/groups/{groupname}:
     delete:
@@ -606,6 +634,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Remove user from LDAP group
     post:
       description: Add a user to a specific LDAP group.
@@ -627,6 +657,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Add user to LDAP group
   /mailinglists/{listname}/members:
     get:
@@ -648,6 +680,8 @@ paths:
           description: Service Unavailable (Mailman integration disabled)
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: List mailing list members
     post:
       consumes:
@@ -680,6 +714,8 @@ paths:
           description: Service Unavailable (Mailman integration disabled)
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Add to mailing list
   /mailinglists/{listname}/members/{email}:
     delete:
@@ -706,6 +742,8 @@ paths:
           description: Service Unavailable (Mailman integration disabled)
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Remove from mailing list
   /mailinglists/{listname}/members/{email}/exists:
     get:
@@ -732,6 +770,8 @@ paths:
           description: Service Unavailable (Mailman integration disabled)
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Check email in mailing list
   /terrain/users/{username}/job-limits:
     get:
@@ -757,6 +797,8 @@ paths:
           description: Failed to retrieve job limits
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Get job limits
     post:
       consumes:
@@ -789,6 +831,8 @@ paths:
           description: Failed to set job limits
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Set job limits
   /users:
     post:
@@ -822,6 +866,8 @@ paths:
           description: Internal server error
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
+      security:
+      - BasicAuth: []
       summary: Create user
   /users/{username}:
     delete:
@@ -839,6 +885,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/kinds.UserResponse'
+      security:
+      - BasicAuth: []
       summary: Delete user synchronously
   /users/{username}/password:
     post:
@@ -868,6 +916,8 @@ paths:
           description: Validation error
           schema:
             $ref: '#/definitions/kinds.ValidationErrorResponse'
+      security:
+      - BasicAuth: []
       summary: Change password
   /users/{username}/validate:
     post:
@@ -897,5 +947,10 @@ paths:
           description: Validation error
           schema:
             $ref: '#/definitions/kinds.ValidationErrorResponse'
+      security:
+      - BasicAuth: []
       summary: Validate credentials
+securityDefinitions:
+  BasicAuth:
+    type: basic
 swagger: "2.0"
