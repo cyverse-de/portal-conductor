@@ -196,4 +196,3 @@ type ValidationError struct {
 type ValidationErrorResponse struct {
 	Detail []ValidationError `json:"detail"`
 }
-
