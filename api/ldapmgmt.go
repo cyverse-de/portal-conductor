@@ -12,6 +12,14 @@ import (
 
 // createLDAPUser creates a user in LDAP and adds them to the default groups
 // (idempotent).
+// @Summary      Create LDAP user
+// @Description  Create a user entry in LDAP only (without iRODS/DataStore setup).
+// @Accept       json
+// @Produce      json
+// @Param        request body kinds.CreateUserRequest true "User Details"
+// @Success      200 {object} kinds.UserResponse
+// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Router       /ldap/users [post]
 func (a *API) createLDAPUser(w http.ResponseWriter, r *http.Request) error {
 	var user kinds.CreateUserRequest
 	if err := decodeBody(r, &user, createUserRequiredFields...); err != nil {
@@ -26,6 +34,13 @@ func (a *API) createLDAPUser(w http.ResponseWriter, r *http.Request) error {
 }
 
 // addUserToLDAPGroup adds a user to an LDAP group if they aren't a member.
+// @Summary      Add user to LDAP group
+// @Description  Add a user to a specific LDAP group.
+// @Produce      json
+// @Param        username path string true "Username"
+// @Param        groupname path string true "Group name"
+// @Success      200 {object} kinds.GenericResponse
+// @Router       /ldap/users/{username}/groups/{groupname} [post]
 func (a *API) addUserToLDAPGroup(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
 	groupname := r.PathValue("groupname")
@@ -47,6 +62,12 @@ func (a *API) addUserToLDAPGroup(w http.ResponseWriter, r *http.Request) error {
 }
 
 // getUserLDAPGroups returns the names of the groups a user belongs to.
+// @Summary      Get user LDAP groups
+// @Description  Get list of LDAP groups the user belongs to.
+// @Produce      json
+// @Param        username path string true "Username"
+// @Success      200 {array} string
+// @Router       /ldap/users/{username}/groups [get]
 func (a *API) getUserLDAPGroups(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
 
@@ -65,6 +86,13 @@ func (a *API) getUserLDAPGroups(w http.ResponseWriter, r *http.Request) error {
 }
 
 // removeUserFromLDAPGroup removes a user from an LDAP group.
+// @Summary      Remove user from LDAP group
+// @Description  Remove a user from a specific LDAP group.
+// @Produce      json
+// @Param        username path string true "Username"
+// @Param        groupname path string true "Group name"
+// @Success      200 {object} kinds.GenericResponse
+// @Router       /ldap/users/{username}/groups/{groupname} [delete]
 func (a *API) removeUserFromLDAPGroup(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
 	groupname := r.PathValue("groupname")
@@ -80,6 +108,13 @@ func (a *API) removeUserFromLDAPGroup(w http.ResponseWriter, r *http.Request) er
 }
 
 // getUserLDAPInfo returns the full LDAP profile for a user.
+// @Summary      Get LDAP user info
+// @Description  Retrieve the LDAP attributes of a user.
+// @Produce      json
+// @Param        username path string true "Username"
+// @Success      200 {object} kinds.UserLDAPInfo
+// @Failure      404 {object} kinds.GenericResponse "User not found"
+// @Router       /ldap/users/{username} [get]
 func (a *API) getUserLDAPInfo(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
 
@@ -95,6 +130,11 @@ func (a *API) getUserLDAPInfo(w http.ResponseWriter, r *http.Request) error {
 }
 
 // getLDAPGroups returns all posixGroups, sorted by name.
+// @Summary      Get LDAP groups
+// @Description  Retrieve all posixGroup entries in LDAP.
+// @Produce      json
+// @Success      200 {array} kinds.LDAPGroupInfo
+// @Router       /ldap/groups [get]
 func (a *API) getLDAPGroups(w http.ResponseWriter, r *http.Request) error {
 	groups, err := a.ldap.GetGroups()
 	if err != nil {
@@ -116,6 +156,12 @@ func (a *API) getLDAPGroups(w http.ResponseWriter, r *http.Request) error {
 }
 
 // checkUserExistsInLDAP reports whether a user exists in LDAP.
+// @Summary      Check user LDAP existence
+// @Description  Check whether a username exists in LDAP.
+// @Produce      json
+// @Param        username path string true "Username"
+// @Success      200 {object} kinds.UserExistsResponse
+// @Router       /ldap/users/{username}/exists [get]
 func (a *API) checkUserExistsInLDAP(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
 
@@ -128,6 +174,18 @@ func (a *API) checkUserExistsInLDAP(w http.ResponseWriter, r *http.Request) erro
 }
 
 // modifyUserLDAPAttribute replaces a single LDAP attribute on a user.
+// @Summary      Modify user LDAP attribute
+// @Description  Update the value of a single attribute for an LDAP user.
+// @Accept       json
+// @Produce      json
+// @Param        username path string true "Username"
+// @Param        attribute path string true "Attribute name"
+// @Param        request body kinds.UserAttributeModifyRequest true "Attribute Value details"
+// @Success      200 {object} kinds.GenericResponse
+// @Failure      400 {object} kinds.GenericResponse "Value cannot be empty"
+// @Failure      404 {object} kinds.GenericResponse "User not found"
+// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Router       /ldap/users/{username}/attributes/{attribute} [put]
 func (a *API) modifyUserLDAPAttribute(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
 	attribute := r.PathValue("attribute")

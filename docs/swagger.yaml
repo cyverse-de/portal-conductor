@@ -1,0 +1,901 @@
+basePath: /
+definitions:
+  kinds.AnalysesListResponse:
+    properties:
+      analyses:
+        items:
+          $ref: '#/definitions/kinds.AnalysisListItem'
+        type: array
+    type: object
+  kinds.AnalysisListItem:
+    properties:
+      analysis_id:
+        type: string
+      app_id:
+        type: string
+      name:
+        type: string
+      status:
+        type: string
+      system_id:
+        type: string
+    type: object
+  kinds.AnalysisStatusResponse:
+    properties:
+      analysis_id:
+        type: string
+      status:
+        type: string
+      url:
+        type: string
+      url_ready:
+        type: boolean
+    type: object
+  kinds.AsyncDeleteUserResponse:
+    properties:
+      analysis_id:
+        type: string
+      status:
+        type: string
+      user:
+        type: string
+    type: object
+  kinds.CreateUserRequest:
+    properties:
+      department:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      last_name:
+        type: string
+      organization:
+        type: string
+      password:
+        type: string
+      title:
+        type: string
+      user_uid:
+        type: string
+      username:
+        type: string
+    type: object
+  kinds.DatastoreServiceRequest:
+    properties:
+      irods_path:
+        type: string
+      irods_user:
+        type: string
+    type: object
+  kinds.DatastoreUserRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  kinds.EmailExistsResponse:
+    properties:
+      email:
+        type: string
+      exists:
+        type: boolean
+    type: object
+  kinds.EmailRequest:
+    properties:
+      bcc:
+        items:
+          type: string
+        type: array
+      from_email:
+        type: string
+      html_body:
+        type: string
+      subject:
+        type: string
+      text_body:
+        type: string
+      to:
+        items:
+          type: string
+        type: array
+    type: object
+  kinds.GenericResponse:
+    properties:
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  kinds.JobLimitsRequest:
+    properties:
+      limit:
+        type: integer
+    type: object
+  kinds.JobLimitsResponse:
+    properties:
+      concurrent_jobs:
+        type: integer
+      username:
+        type: string
+    type: object
+  kinds.LDAPGroupInfo:
+    properties:
+      description:
+        type: string
+      display_name:
+        type: string
+      gid_number:
+        type: integer
+      name:
+        type: string
+      object_classes:
+        items:
+          type: string
+        type: array
+      samba_group_type:
+        type: integer
+      samba_sid:
+        type: string
+    type: object
+  kinds.MailingListMemberRequest:
+    properties:
+      email:
+        type: string
+    type: object
+  kinds.MailingListMembersResponse:
+    properties:
+      listname:
+        type: string
+      members:
+        items:
+          type: string
+        type: array
+    type: object
+  kinds.PasswordChangeRequest:
+    properties:
+      password:
+        type: string
+    type: object
+  kinds.UserAttributeModifyRequest:
+    properties:
+      value:
+        type: string
+    type: object
+  kinds.UserExistsResponse:
+    properties:
+      exists:
+        type: boolean
+      username:
+        type: string
+    type: object
+  kinds.UserLDAPInfo:
+    properties:
+      common_name:
+        type: string
+      department:
+        type: string
+      email:
+        type: string
+      gid_number:
+        type: integer
+      given_name:
+        type: string
+      home_directory:
+        type: string
+      login_shell:
+        type: string
+      object_classes:
+        items:
+          type: string
+        type: array
+      organization:
+        type: string
+      shadow_inactive:
+        type: integer
+      shadow_last_change:
+        type: integer
+      shadow_max:
+        type: integer
+      shadow_min:
+        type: integer
+      shadow_warning:
+        type: integer
+      surname:
+        type: string
+      title:
+        type: string
+      uid_number:
+        type: integer
+      username:
+        type: string
+    type: object
+  kinds.UserResponse:
+    properties:
+      user:
+        type: string
+    type: object
+  kinds.ValidateResponse:
+    properties:
+      valid:
+        type: boolean
+    type: object
+  kinds.ValidationError:
+    properties:
+      loc:
+        example:
+        - body
+        - username
+        items:
+          type: string
+        type: array
+      msg:
+        example: Field required
+        type: string
+      type:
+        example: missing
+        type: string
+    type: object
+  kinds.ValidationErrorResponse:
+    properties:
+      detail:
+        items:
+          $ref: '#/definitions/kinds.ValidationError'
+        type: array
+    type: object
+info:
+  contact: {}
+  description: API for managing CyVerse users, LDAP, DataStore, and email notifications.
+  title: Portal Conductor API
+  version: "1.0"
+paths:
+  /async/analyses:
+    get:
+      description: List deletion job analyses, optionally filtered by status (defaults
+        to "Running").
+      parameters:
+      - description: Status filter (defaults to Running)
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.AnalysesListResponse'
+        "503":
+          description: Service Unavailable (Formation not configured)
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: List analyses
+  /async/analyses/{analysis_id}/details:
+    get:
+      description: Get the details of a specific deletion job analysis.
+      parameters:
+      - description: Analysis ID
+        in: path
+        name: analysis_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Returns raw analysis JSON representation
+          schema: {}
+        "503":
+          description: Service Unavailable (Formation not configured)
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Get analysis details
+  /async/status/{analysis_id}:
+    get:
+      description: Check the status of a user deletion analysis job.
+      parameters:
+      - description: Analysis ID
+        in: path
+        name: analysis_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.AnalysisStatusResponse'
+        "503":
+          description: Service Unavailable (Formation not configured)
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Get deletion status
+  /async/users/{username}:
+    delete:
+      description: Submit a request to delete a user asynchronously from all systems
+        including the database.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.AsyncDeleteUserResponse'
+        "503":
+          description: Service Unavailable (Formation not configured)
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Delete user asynchronously
+  /datastore/users:
+    post:
+      consumes:
+      - application/json
+      description: Create user in iRODS / DataStore only (or reset password if user
+        already exists).
+      parameters:
+      - description: Datastore User details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/kinds.DatastoreUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.UserResponse'
+        "422":
+          description: Validation error
+          schema:
+            $ref: '#/definitions/kinds.ValidationErrorResponse'
+        "500":
+          description: Failed to create datastore user
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Create datastore user
+  /datastore/users/{username}/exists:
+    get:
+      description: Check whether a username exists in the DataStore.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.UserExistsResponse'
+        "500":
+          description: Failed to check user existence in data store
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Check user datastore existence
+  /datastore/users/{username}/services:
+    post:
+      consumes:
+      - application/json
+      description: Register DataStore services with the iRODS path and username.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Datastore Service Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/kinds.DatastoreServiceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+        "422":
+          description: Validation error
+          schema:
+            $ref: '#/definitions/kinds.ValidationErrorResponse'
+        "500":
+          description: Failed to register datastore service
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Register datastore service
+  /emails/send:
+    post:
+      consumes:
+      - application/json
+      description: Send an email using SMTP.
+      parameters:
+      - description: Email details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/kinds.EmailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+        "400":
+          description: Either text_body or html_body must be provided
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+        "422":
+          description: Validation error
+          schema:
+            $ref: '#/definitions/kinds.ValidationErrorResponse'
+        "500":
+          description: Failed to send email
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Send email
+  /ldap/groups:
+    get:
+      description: Retrieve all posixGroup entries in LDAP.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/kinds.LDAPGroupInfo'
+            type: array
+      summary: Get LDAP groups
+  /ldap/users:
+    post:
+      consumes:
+      - application/json
+      description: Create a user entry in LDAP only (without iRODS/DataStore setup).
+      parameters:
+      - description: User Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/kinds.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.UserResponse'
+        "422":
+          description: Validation error
+          schema:
+            $ref: '#/definitions/kinds.ValidationErrorResponse'
+      summary: Create LDAP user
+  /ldap/users/{username}:
+    get:
+      description: Retrieve the LDAP attributes of a user.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.UserLDAPInfo'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Get LDAP user info
+  /ldap/users/{username}/attributes/{attribute}:
+    put:
+      consumes:
+      - application/json
+      description: Update the value of a single attribute for an LDAP user.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Attribute name
+        in: path
+        name: attribute
+        required: true
+        type: string
+      - description: Attribute Value details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/kinds.UserAttributeModifyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+        "400":
+          description: Value cannot be empty
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+        "422":
+          description: Validation error
+          schema:
+            $ref: '#/definitions/kinds.ValidationErrorResponse'
+      summary: Modify user LDAP attribute
+  /ldap/users/{username}/exists:
+    get:
+      description: Check whether a username exists in LDAP.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.UserExistsResponse'
+      summary: Check user LDAP existence
+  /ldap/users/{username}/groups:
+    get:
+      description: Get list of LDAP groups the user belongs to.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+      summary: Get user LDAP groups
+  /ldap/users/{username}/groups/{groupname}:
+    delete:
+      description: Remove a user from a specific LDAP group.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Group name
+        in: path
+        name: groupname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Remove user from LDAP group
+    post:
+      description: Add a user to a specific LDAP group.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Group name
+        in: path
+        name: groupname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Add user to LDAP group
+  /mailinglists/{listname}/members:
+    get:
+      description: Retrieve a list of members in a mailing list.
+      parameters:
+      - description: Mailing list name
+        in: path
+        name: listname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.MailingListMembersResponse'
+        "503":
+          description: Service Unavailable (Mailman integration disabled)
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: List mailing list members
+    post:
+      consumes:
+      - application/json
+      description: Subscribe an email address to a mailing list.
+      parameters:
+      - description: Mailing list name
+        in: path
+        name: listname
+        required: true
+        type: string
+      - description: Mailing list member details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/kinds.MailingListMemberRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+        "422":
+          description: Validation error
+          schema:
+            $ref: '#/definitions/kinds.ValidationErrorResponse'
+        "503":
+          description: Service Unavailable (Mailman integration disabled)
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Add to mailing list
+  /mailinglists/{listname}/members/{email}:
+    delete:
+      description: Unsubscribe an email address from a mailing list.
+      parameters:
+      - description: Mailing list name
+        in: path
+        name: listname
+        required: true
+        type: string
+      - description: Email address to unsubscribe
+        in: path
+        name: email
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+        "503":
+          description: Service Unavailable (Mailman integration disabled)
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Remove from mailing list
+  /mailinglists/{listname}/members/{email}/exists:
+    get:
+      description: Check whether an email address is subscribed to a mailing list.
+      parameters:
+      - description: Mailing list name
+        in: path
+        name: listname
+        required: true
+        type: string
+      - description: Email address
+        in: path
+        name: email
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.EmailExistsResponse'
+        "503":
+          description: Service Unavailable (Mailman integration disabled)
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Check email in mailing list
+  /terrain/users/{username}/job-limits:
+    get:
+      description: Get VICE job limits for a specific user.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.JobLimitsResponse'
+        "404":
+          description: No job limits configured
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+        "500":
+          description: Failed to retrieve job limits
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Get job limits
+    post:
+      consumes:
+      - application/json
+      description: Set VICE concurrent-job limit for a specific user.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Job Limit Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/kinds.JobLimitsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+        "422":
+          description: Validation error
+          schema:
+            $ref: '#/definitions/kinds.ValidationErrorResponse'
+        "500":
+          description: Failed to set job limits
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Set job limits
+  /users:
+    post:
+      consumes:
+      - application/json
+      description: Create a complete user account in both LDAP (with default groups)
+        and DataStore.
+      parameters:
+      - description: User Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/kinds.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.UserResponse'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+        "422":
+          description: Validation error
+          schema:
+            $ref: '#/definitions/kinds.ValidationErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+      summary: Create user
+  /users/{username}:
+    delete:
+      description: Synchronously remove the user from the datastore and LDAP.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.UserResponse'
+      summary: Delete user synchronously
+  /users/{username}/password:
+    post:
+      consumes:
+      - application/json
+      description: Update the user's password in both LDAP and the datastore.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: New password details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/kinds.PasswordChangeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.UserResponse'
+        "422":
+          description: Validation error
+          schema:
+            $ref: '#/definitions/kinds.ValidationErrorResponse'
+      summary: Change password
+  /users/{username}/validate:
+    post:
+      consumes:
+      - application/json
+      description: Validate user credentials against LDAP.
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Password details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/kinds.PasswordChangeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.ValidateResponse'
+        "422":
+          description: Validation error
+          schema:
+            $ref: '#/definitions/kinds.ValidationErrorResponse'
+      summary: Validate credentials
+swagger: "2.0"

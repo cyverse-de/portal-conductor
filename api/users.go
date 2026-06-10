@@ -15,6 +15,16 @@ var createUserRequiredFields = []string{
 }
 
 // addUser creates a user in LDAP (with default groups) and the datastore.
+// @Summary      Create user
+// @Description  Create a complete user account in both LDAP (with default groups) and DataStore.
+// @Accept       json
+// @Produce      json
+// @Param        request body kinds.CreateUserRequest true "User Details"
+// @Success      200 {object} kinds.UserResponse
+// @Failure      400 {object} kinds.GenericResponse "Bad request"
+// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Failure      500 {object} kinds.GenericResponse "Internal server error"
+// @Router       /users [post]
 func (a *API) addUser(w http.ResponseWriter, r *http.Request) error {
 	var user kinds.CreateUserRequest
 	if err := decodeBody(r, &user, createUserRequiredFields...); err != nil {
@@ -34,6 +44,15 @@ func (a *API) addUser(w http.ResponseWriter, r *http.Request) error {
 }
 
 // validateCredentials checks a username/password pair against LDAP.
+// @Summary      Validate credentials
+// @Description  Validate user credentials against LDAP.
+// @Accept       json
+// @Produce      json
+// @Param        username path string true "Username"
+// @Param        request body kinds.PasswordChangeRequest true "Password details"
+// @Success      200 {object} kinds.ValidateResponse
+// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Router       /users/{username}/validate [post]
 func (a *API) validateCredentials(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
 	var req kinds.PasswordChangeRequest
@@ -50,6 +69,15 @@ func (a *API) validateCredentials(w http.ResponseWriter, r *http.Request) error 
 }
 
 // changePassword updates the user's password in LDAP and the datastore.
+// @Summary      Change password
+// @Description  Update the user's password in both LDAP and the datastore.
+// @Accept       json
+// @Produce      json
+// @Param        username path string true "Username"
+// @Param        request body kinds.PasswordChangeRequest true "New password details"
+// @Success      200 {object} kinds.UserResponse
+// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Router       /users/{username}/password [post]
 func (a *API) changePassword(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
 	var req kinds.PasswordChangeRequest
@@ -71,6 +99,12 @@ func (a *API) changePassword(w http.ResponseWriter, r *http.Request) error {
 }
 
 // deleteUser synchronously removes the user from the datastore and LDAP.
+// @Summary      Delete user synchronously
+// @Description  Synchronously remove the user from the datastore and LDAP.
+// @Produce      json
+// @Param        username path string true "Username"
+// @Success      200 {object} kinds.UserResponse
+// @Router       /users/{username} [delete]
 func (a *API) deleteUser(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
 

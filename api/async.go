@@ -138,6 +138,13 @@ func (a *API) usernameParamID(client *formation.Client, systemID, appID string) 
 }
 
 // deleteUserAsync submits a Formation batch job that deletes the user.
+// @Summary      Delete user asynchronously
+// @Description  Submit a request to delete a user asynchronously from all systems including the database.
+// @Produce      json
+// @Param        username path string true "Username"
+// @Success      200 {object} kinds.AsyncDeleteUserResponse
+// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Formation not configured)"
+// @Router       /async/users/{username} [delete]
 func (a *API) deleteUserAsync(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
 
@@ -187,6 +194,13 @@ func (a *API) deleteUserAsync(w http.ResponseWriter, r *http.Request) error {
 }
 
 // getDeletionStatus reports the current status of an analysis.
+// @Summary      Get deletion status
+// @Description  Check the status of a user deletion analysis job.
+// @Produce      json
+// @Param        analysis_id path string true "Analysis ID"
+// @Success      200 {object} kinds.AnalysisStatusResponse
+// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Formation not configured)"
+// @Router       /async/status/{analysis_id} [get]
 func (a *API) getDeletionStatus(w http.ResponseWriter, r *http.Request) error {
 	analysisID := r.PathValue("analysis_id")
 
@@ -216,6 +230,13 @@ func (a *API) getDeletionStatus(w http.ResponseWriter, r *http.Request) error {
 }
 
 // listAnalyses lists Formation analyses filtered by status (default Running).
+// @Summary      List analyses
+// @Description  List deletion job analyses, optionally filtered by status (defaults to "Running").
+// @Produce      json
+// @Param        status query string false "Status filter (defaults to Running)"
+// @Success      200 {object} kinds.AnalysesListResponse
+// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Formation not configured)"
+// @Router       /async/analyses [get]
 func (a *API) listAnalyses(w http.ResponseWriter, r *http.Request) error {
 	status := r.URL.Query().Get("status")
 	if status == "" {
@@ -255,6 +276,13 @@ func (a *API) listAnalyses(w http.ResponseWriter, r *http.Request) error {
 }
 
 // getAnalysisDetails passes through the full analysis document from Formation.
+// @Summary      Get analysis details
+// @Description  Get the details of a specific deletion job analysis.
+// @Produce      json
+// @Param        analysis_id path string true "Analysis ID"
+// @Success      200 {object} interface{} "Returns raw analysis JSON representation"
+// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Formation not configured)"
+// @Router       /async/analyses/{analysis_id}/details [get]
 func (a *API) getAnalysisDetails(w http.ResponseWriter, r *http.Request) error {
 	analysisID := r.PathValue("analysis_id")
 
