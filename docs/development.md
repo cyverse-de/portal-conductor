@@ -4,36 +4,55 @@
 
 ```
 portal-conductor/
-├── handlers/           # API endpoint handlers
-│   ├── auth.py        # Authentication logic
-│   ├── user_management.py
-│   ├── ldap_management.py
-│   └── ...
-├── scripts/           # Utility scripts
+├── api/               # HTTP API: router, auth middleware, endpoint handlers
+├── cmd/
+│   └── delete-user/   # Standalone user-deletion CLI (DE batch job)
+├── config/            # Config file / environment variable loading
+├── datastore/         # iRODS client (go-irodsclient)
+├── emailsvc/          # SMTP email sending
+├── external/          # Error types for external HTTP service failures
+├── formation/         # Formation client with Keycloak token management
+├── kinds/             # Request/response body types
+├── ldapclient/        # LDAP operations (go-ldap)
+├── mailman/           # Mailman 2.1 admin interface client
+├── portaldb/          # Portal PostgreSQL database access (delete-user)
+├── terrain/           # Terrain API client
+├── scripts/           # Utility scripts and config examples
 ├── ssl-certs/         # SSL certificates (generated)
-├── main.py           # FastAPI application
-├── start_dual.py     # Dual-port startup (production)
-├── start.py          # Single-port startup (fallback)
+├── main.go            # API server entrypoint
 ├── config.template.json
-└── pyproject.toml
+├── Dockerfile         # API server image
+└── DeleteUser.dockerfile  # delete-user batch job image
 ```
 
-## Startup Scripts
+## Building and Running
 
-- **`start_dual.py`** (recommended): Runs HTTPS (full API) + HTTP (health only)
-- **`start.py`** (fallback): Runs single port (HTTPS or HTTP)
+```bash
+# API server
+go build -o portal-conductor .
+./portal-conductor
+
+# delete-user CLI
+go build -o delete-user ./cmd/delete-user
+./delete-user --help
+```
+
+The server runs HTTPS (full API) plus HTTP (health checks only) when SSL is
+enabled and certificates exist, and falls back to a single HTTP port
+otherwise. See [SSL/HTTPS](ssl.md).
 
 ## Running Tests
 
 ```bash
-uv run pytest
+go test ./...
 ```
 
-## Code Formatting
+## Linting and Formatting
 
 ```bash
-uv run ruff check .
-uv run ruff check . --fix
+gofmt -l .
+go vet ./...
+golangci-lint run ./...
 ```
 
 ## Features
@@ -46,4 +65,3 @@ uv run ruff check . --fix
 - **Email Services**: Send notification emails for user operations
 - **HTTP Basic Authentication**: Secure all endpoints with configurable credentials
 - **HTTPS Support**: Optional SSL/TLS encryption with automatic HTTP fallback
-- **OpenAPI Documentation**: Interactive Swagger UI for API exploration

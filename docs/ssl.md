@@ -33,17 +33,15 @@ Edit `config.json`:
 ### 3. Run with SSL
 
 ```bash
-uv run python start_dual.py
+./portal-conductor
 ```
 
 **Dual-port mode** (when SSL certificates available):
 - HTTPS port 8443: Full API with authentication
 - HTTP port 8000: Health checks only
 
-**Fallback mode** (if certificates missing):
-```bash
-uv run python start.py  # Single HTTP port 8000 with full API
-```
+**Fallback mode** (if certificates missing): single HTTP port 8000 with the
+full API.
 
 ### 4. Test HTTPS
 
@@ -105,15 +103,11 @@ kubectl port-forward svc/portal-conductor 8000:80
 
 ## Behavior
 
-**With `start_dual.py` (recommended)**:
 - **SSL Enabled + Certificates Found**: HTTPS (full API) on port 8443 + HTTP (health only) on port 8000
 - **SSL Enabled + Certificates Missing**: HTTP (full API) on port 8000
 - **SSL Disabled**: HTTP (full API) on port 8000
 
-**With `start.py` (legacy)**:
-- **SSL Enabled + Certificates Found**: HTTPS (full API) on port 8443
-- **SSL Enabled + Certificates Missing**: HTTP (full API) on port 8000
-- **SSL Disabled**: HTTP (full API) on port 8000
+The `--http-port` and `--https-port` flags override the configured ports.
 
 ## Disable SSL
 
@@ -146,7 +140,7 @@ ls -la ssl-certs/
 **Check application logs**:
 ```bash
 # Local
-python start.py
+./portal-conductor
 
 # Kubernetes
 kubectl logs deployment/portal-conductor

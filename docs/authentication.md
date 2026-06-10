@@ -4,17 +4,7 @@ Portal Conductor supports HTTP Basic Authentication to secure API endpoints. Aut
 
 ## Quick Setup
 
-### 1. Generate Password Hash
-
-```bash
-# Using the dedicated script
-uv run python scripts/generate-password-hash.py
-
-# Or directly
-uv run python -c "from handlers.auth import get_password_hash; print(get_password_hash('your_password'))"
-```
-
-### 2. Configure Authentication
+### 1. Configure Authentication
 
 Edit `config.json`:
 
@@ -23,15 +13,19 @@ Edit `config.json`:
   "auth": {
     "enabled": true,
     "username": "admin",
-    "password": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj0kB.z8.6X2",
+    "password": "your-strong-password",
     "realm": "Portal Conductor API"
   }
 }
 ```
 
-**⚠️ Change the default password immediately!** The hash above is for password `admin`.
+The password is stored in plaintext in the config file and compared in
+constant time, so protect the config file itself (file permissions,
+Kubernetes secrets).
 
-### 3. Test Authentication
+**⚠️ Use a strong, unique password.**
+
+### 2. Test Authentication
 
 ```bash
 # Health check (no auth required) - works on both ports
@@ -39,26 +33,8 @@ curl http://localhost:8000/
 curl -k https://localhost:8443/
 
 # Authenticated endpoint - HTTPS only (HTTP port blocks API endpoints)
-curl -k -u admin:your_password https://localhost:8443/users/test/exists
+curl -k -u admin:your_password https://localhost:8443/ldap/users/test/exists
 ```
-
-## Environment Variables
-
-Configure via environment variables:
-
-```bash
-export AUTH_ENABLED=true
-export AUTH_USERNAME=admin
-export AUTH_PASSWORD="$2b$12$..."
-export AUTH_REALM="Portal Conductor API"
-```
-
-## Swagger UI
-
-1. Navigate to `/docs` (e.g., http://localhost:8000/docs)
-2. Click **"Authorize"** button (lock icon)
-3. Enter username and password
-4. Click **"Authorize"**
 
 ## API Usage
 
@@ -80,32 +56,26 @@ curl -k -H "Authorization: Basic $(echo -n 'username:password' | base64)" \
 
 ## Kubernetes Deployment
 
-### 1. Create Secret
+Authentication credentials live in the config file, so deploy the whole
+config as a secret and mount it:
 
 ```bash
-# Generate hash
-PASSWORD_HASH=$(uv run python -c "from handlers.auth import get_password_hash; print(get_password_hash('secure_password'))")
-
-# Create secret
-kubectl create secret generic portal-conductor-auth \
-  --from-literal=username=admin \
-  --from-literal=password="$PASSWORD_HASH"
+kubectl create secret generic portal-conductor-config \
+  --from-file=config.json
 ```
-
-### 2. Update Deployment
 
 ```yaml
 env:
-  - name: AUTH_USERNAME
-    valueFrom:
-      secretKeyRef:
-        name: portal-conductor-auth
-        key: username
-  - name: AUTH_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: portal-conductor-auth
-        key: password
+  - name: PORTAL_CONDUCTOR_CONFIG
+    value: /etc/portal-conductor/config.json
+volumeMounts:
+  - name: config
+    mountPath: /etc/portal-conductor
+    readOnly: true
+volumes:
+  - name: config
+    secret:
+      secretName: portal-conductor-config
 ```
 
 ## Disable Authentication
@@ -120,18 +90,13 @@ For development/testing:
 }
 ```
 
-Or via environment:
-```bash
-export AUTH_ENABLED=false
-```
-
 ## Security Notes
 
-- Passwords stored as bcrypt hashes (cost factor 12)
 - API endpoints only accessible via HTTPS (HTTP port restricted to health checks)
 - Use strong, unique passwords
 - Rotate credentials regularly
 - Store production credentials securely (Kubernetes secrets, Vault)
+- Username and password comparisons use constant-time comparison to prevent timing attacks
 
 ## Troubleshooting
 
@@ -140,19 +105,7 @@ export AUTH_ENABLED=false
 grep -A 5 '"auth"' config.json
 ```
 
-**Test password hash**:
-```bash
-uv run python -c "from handlers.auth import verify_password; print(verify_password('your_password', 'hash_from_config'))"
-```
-
-**bcrypt version warning**: The following warning is harmless and can be ignored:
-```
-(trapped) error reading bcrypt version
-AttributeError: module 'bcrypt' has no attribute '__about__'
-```
-This occurs due to a compatibility issue between `passlib` 1.7.4 and `bcrypt` 4.x. Authentication still works correctly.
-
-**Dependencies**:
-```bash
-uv sync
-```
+Note that when no config file is found and the service falls back to
+environment variables, authentication remains enabled but no credentials are
+configured, so every authenticated endpoint returns 401. Provide a config
+file with an `auth` section (or disable auth) to fix this.

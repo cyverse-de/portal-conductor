@@ -1,45 +1,30 @@
-# Minimal Dockerfile for running the delete-user.py CLI script
+# Minimal Dockerfile for running the delete-user CLI
 # This is designed to be used as a batch job in the Discovery Environment
 
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+FROM golang:1.24 AS build
 
-WORKDIR /app
+WORKDIR /src
 
-ENV UV_LINK_MODE=copy
-ENV PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+# Download dependencies first for better caching
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Install system dependencies required for python-ldap and python-irodsclient
+COPY . .
+RUN CGO_ENABLED=0 go build -o /delete-user ./cmd/delete-user
+
+FROM debian:bookworm-slim
+
+# CA certificates are needed for TLS connections to Mailman and other services
 RUN apt update -y && \
-    apt install -y --no-install-recommends \
-        build-essential \
-        libsasl2-dev \
-        python3-dev \
-        libldap2-dev && \
+    apt install -y --no-install-recommends ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files first for better caching
-COPY uv.lock pyproject.toml ./
+WORKDIR /app
 
-# Install dependencies without the project itself
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-install-project --no-dev
+COPY --from=build /delete-user /usr/local/bin/delete-user
 
-# Copy the entire project (needed for uv sync to work properly)
-COPY . /app
-
-# Install the project itself
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev
-
-# Clean up unnecessary files to keep image smaller
-RUN rm -rf tests/ .git/ .github/ *.md start*.py handlers/ main.py
-
-# Set PATH to include virtual environment
-ENV PATH="/app/.venv/bin:$PATH"
-
-# Set the entrypoint to run the delete-user.py script with uv
-ENTRYPOINT ["uv", "run", "python", "scripts/delete-user.py"]
+ENTRYPOINT ["delete-user"]
 
 # Default command shows help (can be overridden with username argument)
 CMD ["--help"]

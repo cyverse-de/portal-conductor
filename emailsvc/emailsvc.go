@@ -1,0 +1,247 @@
+// Package emailsvc ports email_service.py to Go: SMTP email sending with
+// optional implicit TLS or STARTTLS and multipart text/HTML bodies.
+package emailsvc
+
+import (
+	"crypto/rand"
+	"crypto/tls"
+	"encoding/binary"
+	"encoding/hex"
+	"fmt"
+	"log"
+	"mime/multipart"
+	"mime/quotedprintable"
+	"net"
+	"net/smtp"
+	"net/textproto"
+	"os"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/cyverse-de/portal-conductor/config"
+)
+
+const dialTimeout = 30 * time.Second
+
+// Service sends email through the configured SMTP server.
+type Service struct {
+	host        string
+	port        int
+	user        string
+	password    string
+	useTLS      bool
+	useSSL      bool
+	defaultFrom string
+}
+
+// New returns a Service configured from the smtp section of the config.
+func New(cfg config.SMTP) *Service {
+	return &Service{
+		host:        cfg.Host,
+		port:        cfg.Port.Int(25),
+		user:        cfg.User,
+		password:    cfg.Password,
+		useTLS:      cfg.UseTLS,
+		useSSL:      cfg.UseSSL,
+		defaultFrom: cfg.From,
+	}
+}
+
+// Send sends an email, returning the cause of any failure.
+func (s *Service) Send(to []string, subject string, textBody, htmlBody, fromEmail *string, bcc []string) error {
+	if err := s.send(to, subject, textBody, htmlBody, fromEmail, bcc); err != nil {
+		log.Printf("Failed to send email: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (s *Service) send(to []string, subject string, textBody, htmlBody, fromEmail *string, bcc []string) error {
+	if (textBody == nil || *textBody == "") && (htmlBody == nil || *htmlBody == "") {
+		return fmt.Errorf("either text_body or html_body must be provided")
+	}
+
+	from := s.defaultFrom
+	if fromEmail != nil && *fromEmail != "" {
+		from = *fromEmail
+	}
+
+	message, err := buildMessage(from, to, subject, textBody, htmlBody)
+	if err != nil {
+		return err
+	}
+
+	client, err := s.connect()
+	if err != nil {
+		return err
+	}
+	defer client.Close() //nolint:errcheck
+
+	if s.user != "" && s.password != "" {
+		if err := client.Auth(smtp.PlainAuth("", s.user, s.password, s.host)); err != nil {
+			return fmt.Errorf("SMTP authentication failed (bad credentials or server requires a different mechanism?): %w", err)
+		}
+	}
+
+	if err := client.Mail(from); err != nil {
+		return err
+	}
+	for _, rcpt := range slices.Concat(to, bcc) {
+		if err := client.Rcpt(rcpt); err != nil {
+			return fmt.Errorf("recipient %s rejected: %w", rcpt, err)
+		}
+	}
+
+	w, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(message); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return client.Quit()
+}
+
+func (s *Service) connect() (*smtp.Client, error) {
+	addr := net.JoinHostPort(s.host, strconv.Itoa(s.port))
+	if s.useSSL {
+		conn, err := tls.DialWithDialer(&net.Dialer{Timeout: dialTimeout}, "tcp", addr, &tls.Config{ServerName: s.host})
+		if err != nil {
+			return nil, fmt.Errorf("connecting to SMTP server %s over TLS: %w", addr, err)
+		}
+		client, err := smtp.NewClient(conn, s.host)
+		if err != nil {
+			return nil, err
+		}
+		return helloClient(client)
+	}
+
+	conn, err := net.DialTimeout("tcp", addr, dialTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to SMTP server %s: %w", addr, err)
+	}
+	client, err := smtp.NewClient(conn, s.host)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	if client, err = helloClient(client); err != nil {
+		return nil, err
+	}
+	if s.useTLS {
+		if err := client.StartTLS(&tls.Config{ServerName: s.host}); err != nil {
+			_ = client.Close()
+			return nil, fmt.Errorf("STARTTLS with %s failed: %w", addr, err)
+		}
+	}
+	return client, nil
+}
+
+// helloClient sends EHLO with the local hostname. net/smtp defaults to
+// "localhost", which lands in the receiving MTA's Received header and is a
+// strong spam signal; Python's smtplib used the host FQDN.
+func helloClient(client *smtp.Client) (*smtp.Client, error) {
+	if err := client.Hello(localHostname()); err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+	return client, nil
+}
+
+func localHostname() string {
+	if hostname, err := os.Hostname(); err == nil && hostname != "" {
+		return hostname
+	}
+	return "localhost"
+}
+
+// buildMessage assembles a multipart/alternative MIME message with optional
+// plain-text and HTML parts, like Python's MIMEMultipart("alternative").
+// Date and Message-ID are set explicitly because no MTA in the delivery path
+// adds them, and their absence raises spam scores.
+func buildMessage(from string, to []string, subject string, textBody, htmlBody *string) ([]byte, error) {
+	var buf strings.Builder
+	mw := multipart.NewWriter(&buf)
+
+	fmt.Fprintf(&buf, "Subject: %s\r\n", sanitizeHeader(subject))
+	fmt.Fprintf(&buf, "From: %s\r\n", sanitizeHeader(from))
+	fmt.Fprintf(&buf, "To: %s\r\n", sanitizeHeader(strings.Join(to, ", ")))
+	fmt.Fprintf(&buf, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
+	fmt.Fprintf(&buf, "Message-ID: %s\r\n", generateMessageID(from))
+	buf.WriteString("MIME-Version: 1.0\r\n")
+	fmt.Fprintf(&buf, "Content-Type: multipart/alternative; boundary=%q\r\n", mw.Boundary())
+	buf.WriteString("\r\n")
+
+	writePart := func(contentType, body string) error {
+		header := textproto.MIMEHeader{}
+		if isASCII(body) {
+			header.Set("Content-Type", contentType+`; charset="us-ascii"`)
+			header.Set("Content-Transfer-Encoding", "7bit")
+			part, err := mw.CreatePart(header)
+			if err != nil {
+				return err
+			}
+			_, err = part.Write([]byte(body))
+			return err
+		}
+		header.Set("Content-Type", contentType+`; charset="utf-8"`)
+		header.Set("Content-Transfer-Encoding", "quoted-printable")
+		part, err := mw.CreatePart(header)
+		if err != nil {
+			return err
+		}
+		qp := quotedprintable.NewWriter(part)
+		if _, err := qp.Write([]byte(body)); err != nil {
+			return err
+		}
+		return qp.Close()
+	}
+
+	if textBody != nil && *textBody != "" {
+		if err := writePart("text/plain", *textBody); err != nil {
+			return nil, err
+		}
+	}
+	if htmlBody != nil && *htmlBody != "" {
+		if err := writePart("text/html", *htmlBody); err != nil {
+			return nil, err
+		}
+	}
+	if err := mw.Close(); err != nil {
+		return nil, err
+	}
+	return []byte(buf.String()), nil
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// generateMessageID returns a unique RFC 5322 Message-ID using the sender's
+// domain (or the local hostname when the From address has none).
+func generateMessageID(from string) string {
+	domain := localHostname()
+	if at := strings.LastIndex(from, "@"); at != -1 && at < len(from)-1 {
+		domain = strings.TrimRight(from[at+1:], ">")
+	}
+	random := make([]byte, 8)
+	if _, err := rand.Read(random); err != nil {
+		binary.BigEndian.PutUint64(random, uint64(time.Now().UnixNano()))
+	}
+	return fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), hex.EncodeToString(random), domain)
+}
+
+// sanitizeHeader strips CR/LF to prevent header injection from request data.
+func sanitizeHeader(v string) string {
+	return strings.NewReplacer("\r", "", "\n", "").Replace(v)
+}
