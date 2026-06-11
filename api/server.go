@@ -18,7 +18,6 @@ import (
 	"github.com/cyverse-de/portal-conductor/datastore"
 	"github.com/cyverse-de/portal-conductor/emailsvc"
 	"github.com/cyverse-de/portal-conductor/external"
-	"github.com/cyverse-de/portal-conductor/formation"
 	"github.com/cyverse-de/portal-conductor/kinds"
 	"github.com/cyverse-de/portal-conductor/ldapclient"
 	"github.com/cyverse-de/portal-conductor/mailman"
@@ -30,22 +29,21 @@ const greetingMessage = "Hello from portal-conductor."
 
 // API holds the service clients and configuration shared by all handlers.
 type API struct {
-	cfg       *config.Config
-	ldap      *ldapclient.Client
-	ds        *datastore.DataStore
-	terrain   *terrain.Client
-	mailman   *mailman.Client
-	email     *emailsvc.Service
-	formation *formation.Client // nil when the Formation integration is not configured
+	cfg     *config.Config
+	ldap    *ldapclient.Client
+	ds      *datastore.DataStore
+	terrain *terrain.Client
+	mailman *mailman.Client
+	email   *emailsvc.Service
 
-	// formationAppID caches the user-deletion app ID; it may be resolved
+	// deletionAppID caches the user-deletion app ID; it may be resolved
 	// lazily when the startup lookup failed.
-	appIDMu        sync.Mutex
-	formationAppID string
+	appIDMu       sync.Mutex
+	deletionAppID string
 }
 
-// New assembles the API from its dependencies. formationClient may be nil and
-// formationAppID may be empty when unresolved at startup.
+// New assembles the API from its dependencies. deletionAppID may be empty
+// when unresolved at startup.
 func New(
 	cfg *config.Config,
 	ldapClient *ldapclient.Client,
@@ -53,18 +51,16 @@ func New(
 	terrainClient *terrain.Client,
 	mailmanClient *mailman.Client,
 	emailService *emailsvc.Service,
-	formationClient *formation.Client,
-	formationAppID string,
+	deletionAppID string,
 ) *API {
 	return &API{
-		cfg:            cfg,
-		ldap:           ldapClient,
-		ds:             ds,
-		terrain:        terrainClient,
-		mailman:        mailmanClient,
-		email:          emailService,
-		formation:      formationClient,
-		formationAppID: formationAppID,
+		cfg:           cfg,
+		ldap:          ldapClient,
+		ds:            ds,
+		terrain:       terrainClient,
+		mailman:       mailmanClient,
+		email:         emailService,
+		deletionAppID: deletionAppID,
 	}
 }
 
@@ -245,7 +241,7 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /users/{username}/password", a.protected(a.changePassword))
 	mux.Handle("DELETE /users/{username}", a.protected(a.deleteUser))
 
-	// Async operations (Formation)
+	// Async operations (Terrain)
 	mux.Handle("DELETE /async/users/{username}", a.protected(a.deleteUserAsync))
 	mux.Handle("GET /async/status/{analysis_id}", a.protected(a.getDeletionStatus))
 	mux.Handle("GET /async/analyses", a.protected(a.listAnalyses))

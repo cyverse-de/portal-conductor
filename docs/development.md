@@ -11,7 +11,6 @@ portal-conductor/
 ├── datastore/         # iRODS client (go-irodsclient)
 ├── emailsvc/          # SMTP email sending
 ├── external/          # Error types for external HTTP service failures
-├── formation/         # Formation client with Keycloak token management
 ├── kinds/             # Request/response body types
 ├── ldapclient/        # LDAP operations (go-ldap)
 ├── mailman/           # Mailman 2.1 admin interface client
@@ -59,9 +58,8 @@ golangci-lint run ./...
 
 - **User Management**: Create and manage LDAP users with group memberships
 - **DataStore Integration**: Set up iRODS users with permissions and service registrations
-- **Terrain Integration**: Manage VICE job limits for users
+- **Terrain Integration**: Manage VICE job limits and async user deletion via DE batch jobs
 - **Mailing List Management**: Add/remove users from Mailman mailing lists
-- **Formation Integration**: Async user deletion via Formation batch jobs
 - **Email Services**: Send notification emails for user operations
 - **HTTP Basic Authentication**: Secure all endpoints with configurable credentials
 - **HTTPS Support**: Optional SSL/TLS encryption with automatic HTTP fallback

@@ -1,34 +1,24 @@
 package api
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/cyverse-de/portal-conductor/formation"
+	"github.com/cyverse-de/portal-conductor/terrain"
 )
 
-// newFormationServer serves a Keycloak token endpoint and an app-parameters
+// newAppJobViewServer serves Terrain's token endpoint and an app job-view
 // endpoint returning the given parameter groups.
-func newFormationServer(t *testing.T, appParams map[string]any) *httptest.Server {
+func newAppJobViewServer(t *testing.T, jobView map[string]any) *httptest.Server {
 	t.Helper()
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /realms/testrealm/protocol/openid-connect/token", func(w http.ResponseWriter, _ *http.Request) {
-		claims, _ := json.Marshal(map[string]any{"exp": time.Now().Add(time.Hour).Unix()})
-		token := fmt.Sprintf("x.%s.x", base64.RawURLEncoding.EncodeToString(claims))
-		json.NewEncoder(w).Encode(map[string]any{"access_token": token, "expires_in": 3600}) //nolint:errcheck
+	return newTerrainTestServer(t, func(mux *http.ServeMux) {
+		mux.HandleFunc("GET /apps/de/app-123", func(w http.ResponseWriter, _ *http.Request) {
+			json.NewEncoder(w).Encode(jobView) //nolint:errcheck
+		})
 	})
-	mux.HandleFunc("GET /apps/de/app-123/parameters", func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(appParams) //nolint:errcheck
-	})
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-	return server
 }
 
 func TestUsernameParamID(t *testing.T) {
@@ -97,13 +87,13 @@ func TestUsernameParamID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := newFormationServer(t, map[string]any{"groups": tt.groups})
-			client, err := formation.New(server.URL, server.URL, "testrealm", "cid", "csecret", true, 10*time.Second)
+			server := newAppJobViewServer(t, map[string]any{"groups": tt.groups})
+			client, err := terrain.New(server.URL, "svc", "pw")
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			a := New(testConfig(), nil, nil, nil, nil, nil, client, "app-123")
+			a := New(testConfig(), nil, nil, client, nil, nil, "app-123")
 			id, err := a.usernameParamID(client, "de", "app-123")
 
 			if tt.wantError {

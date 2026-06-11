@@ -1,6 +1,6 @@
 // Command delete-user removes a user account from all CyVerse systems:
 // mailing lists, the iRODS datastore, LDAP, and the portal database. It is a
-// Go port of scripts/delete-user.py and runs as a Formation batch job.
+// Go port of scripts/delete-user.py and runs as a DE batch job.
 //
 // Usage: delete-user username [--config path/to/config.json] [--dry-run]
 //
@@ -57,7 +57,7 @@ type cliArgs struct {
 }
 
 // parseArgs accepts flags before or after the username, like Python's
-// argparse, so existing Formation app invocations keep working.
+// argparse, so existing DE app invocations keep working.
 func parseArgs(argv []string) (cliArgs, error) {
 	args := cliArgs{
 		configPath: cmp.Or(os.Getenv("PORTAL_CONDUCTOR_CONFIG"), "config.json"),

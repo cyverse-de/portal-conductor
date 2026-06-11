@@ -1,5 +1,5 @@
 // Package external holds error types and shared helpers for talking to
-// external HTTP services (Terrain, Mailman, Formation, Keycloak). The API
+// external HTTP services (Terrain, Mailman, Keycloak). The API
 // layer maps the error types to the same responses the Python service
 // produced for httpx errors: StatusError -> 404/502, RequestError -> 503.
 package external

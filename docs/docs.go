@@ -43,7 +43,7 @@ const docTemplate = `{
                         }
                     },
                     "503": {
-                        "description": "Service Unavailable (Formation not configured)",
+                        "description": "Service Unavailable (Terrain not configured)",
                         "schema": {
                             "$ref": "#/definitions/kinds.GenericResponse"
                         }
@@ -77,8 +77,14 @@ const docTemplate = `{
                         "description": "Returns raw analysis JSON representation",
                         "schema": {}
                     },
+                    "422": {
+                        "description": "Validation error",
+                        "schema": {
+                            "$ref": "#/definitions/kinds.ValidationErrorResponse"
+                        }
+                    },
                     "503": {
-                        "description": "Service Unavailable (Formation not configured)",
+                        "description": "Service Unavailable (Terrain not configured)",
                         "schema": {
                             "$ref": "#/definitions/kinds.GenericResponse"
                         }
@@ -114,8 +120,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/kinds.AnalysisStatusResponse"
                         }
                     },
+                    "422": {
+                        "description": "Validation error",
+                        "schema": {
+                            "$ref": "#/definitions/kinds.ValidationErrorResponse"
+                        }
+                    },
                     "503": {
-                        "description": "Service Unavailable (Formation not configured)",
+                        "description": "Service Unavailable (Terrain not configured)",
                         "schema": {
                             "$ref": "#/definitions/kinds.GenericResponse"
                         }
@@ -152,7 +164,7 @@ const docTemplate = `{
                         }
                     },
                     "503": {
-                        "description": "Service Unavailable (Formation not configured)",
+                        "description": "Service Unavailable (Terrain not configured)",
                         "schema": {
                             "$ref": "#/definitions/kinds.GenericResponse"
                         }

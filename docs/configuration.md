@@ -51,7 +51,10 @@ Edit `config.json` to match your environment.
   "terrain": {
     "url": "http://your-terrain-server/",
     "user": "your-terrain-user",
-    "password": "your-terrain-password"
+    "password": "your-terrain-password",
+    "user_deletion_app_id": "",
+    "user_deletion_app_name": "portal-delete-user",
+    "system_id": "de"
   },
   "mailman": {
     "enabled": false,
@@ -66,20 +69,6 @@ Edit `config.json` to match your environment.
     "use_tls": true,
     "use_ssl": false,
     "from": "noreply@yourdomain.com"
-  },
-  "formation": {
-    "base_url": "http://formation:8080",
-    "keycloak": {
-      "server_url": "https://keycloak.example.com",
-      "realm": "CyVerse",
-      "client_id": "portal-conductor-service",
-      "client_secret": "your-client-secret-here"
-    },
-    "user_deletion_app_id": "",
-    "user_deletion_app_name": "portal-delete-user",
-    "system_id": "de",
-    "verify_ssl": true,
-    "timeout": 60.0
   }
 }
 ```
@@ -142,41 +131,32 @@ Portal Conductor supports sending emails through external SMTP servers.
 
 If your SMTP server supports DKIM signing, it will be handled automatically by the server when emails are sent.
 
-## Formation Configuration
+## Terrain Configuration
 
-Portal Conductor integrates with the Formation service for asynchronous user deletion via batch jobs.
+Portal Conductor uses the Terrain API both for job-limit management and for asynchronous user deletion via batch jobs. Authentication uses the configured service account: portal-conductor exchanges the basic-auth credentials for a Keycloak access token via Terrain's `/token/keycloak` endpoint.
 
 ```json
 {
-  "formation": {
-    "base_url": "http://formation:8080",
-    "keycloak": {
-      "server_url": "https://keycloak.example.com",
-      "realm": "CyVerse",
-      "client_id": "portal-conductor-service",
-      "client_secret": "your-client-secret-here"
-    },
+  "terrain": {
+    "url": "http://your-terrain-server/",
+    "user": "your-terrain-user",
+    "password": "your-terrain-password",
     "user_deletion_app_id": "",
     "user_deletion_app_name": "portal-delete-user",
-    "system_id": "de",
-    "verify_ssl": true,
-    "timeout": 60.0
+    "system_id": "de"
   }
 }
 ```
 
-**Formation Options:**
-- `base_url`: Formation API base URL
-- `keycloak`: OAuth2 authentication configuration for Formation
-  - `server_url`: Keycloak server URL
-  - `realm`: Keycloak realm name
-  - `client_id`: Service client ID for authentication
-  - `client_secret`: Service client secret
+**Terrain Options:**
+- `url`: Terrain API base URL
+- `user`: Service account username (also the user the deletion analyses run as)
+- `password`: Service account password
 - `user_deletion_app_id`: UUID of the deletion app (optional if using app name)
 - `user_deletion_app_name`: Name of the deletion app (automatically resolved to ID at startup)
-- `system_id`: Formation system identifier (typically "de")
-- `verify_ssl`: Enable SSL certificate verification (default: true). Set to false for development with self-signed certificates
-- `timeout`: HTTP request timeout in seconds (default: 60.0). Increase if job submissions are timing out
+- `system_id`: DE system identifier (typically "de")
+
+Environment variable fallbacks: `TERRAIN_URL`, `TERRAIN_USER`, `TERRAIN_PASSWORD`, `TERRAIN_USER_DELETION_APP_ID`, `TERRAIN_USER_DELETION_APP_NAME`, `TERRAIN_SYSTEM_ID`.
 
 **App Configuration:**
 You can specify the user deletion app either by:
@@ -184,3 +164,8 @@ You can specify the user deletion app either by:
 2. **App Name**: Set `user_deletion_app_name` (ID is looked up automatically at startup)
 
 Using app name is more flexible when the app ID might change across environments.
+
+**Notes:**
+- The deletion app must be public or shared with the configured Terrain user, since the analyses are submitted as that user.
+- Analysis outputs are written under `/{irods.zone}/home/{terrain.user}/analyses/`, so `irods.zone` must match the zone of the Terrain user's home collection.
+- To disable the async deletion endpoints, blank out both `user_deletion_app_id` and `user_deletion_app_name`; the `/async/*` endpoints then return 503.

@@ -1,16 +1,16 @@
 # Username Propagation and App-Exposer Whitelist
 
-Portal Conductor integrates with multiple services to orchestrate job launches and user operations. When jobs are submitted through Portal Conductor, the username flows through a chain of services before reaching app-exposer for whitelist-based resource tracking bypass.
+Portal Conductor integrates with multiple services to orchestrate job launches and user operations. When deletion jobs are submitted through Portal Conductor, the username flows through a chain of services before reaching app-exposer for whitelist-based resource tracking bypass.
 
 ## Service Flow
 
 **Complete job submission chain:**
 ```
-portal-conductor → formation → apps → app-exposer
+portal-conductor → terrain → apps → app-exposer
 ```
 
-1. **Portal Conductor** → Calls Formation's `/app/launch/{system_id}/{app_id}` endpoint
-2. **Formation** → Extracts username from JWT and calls apps service `/analyses` endpoint
+1. **Portal Conductor** → Calls Terrain's `POST /analyses` endpoint, authenticated as the configured Terrain service account (`terrain.user`)
+2. **Terrain** → Extracts the username from the Keycloak token and calls the apps service `/analyses` endpoint
 3. **Apps** → Routes jobs to app-exposer based on job type:
    - VICE (interactive) apps → `POST /vice/launch`
    - Batch apps → `POST /batch` (JEX-compatible endpoint)
@@ -18,22 +18,13 @@ portal-conductor → formation → apps → app-exposer
 
 ## Username Handling
 
-**For service accounts (when Portal Conductor calls Formation):**
+Portal Conductor authenticates to Terrain with the basic-auth credentials of a regular user account (`terrain.user`), exchanged for a Keycloak token via `/token/keycloak`. The username is passed through the chain without transformation:
 
-Formation applies username sanitization before passing to downstream services:
-- **Removes all non-alphanumeric characters** (hyphens, underscores, dots, etc.)
-- **Converts to lowercase**
-- Only letters and numbers are retained
-
-**Examples of transformation:**
-- `de-service-account` → `deserviceaccount`
-- `portal-conductor-service` → `portalconductorservice`
-- `Service_Account_123` → `serviceaccount123`
-
-**For regular users (when end users launch jobs):**
-- Username is passed through without sanitization
+- Deletion analyses run as, and are listed under, the configured `terrain.user`
 - Uses the short form (without domain suffix)
-- Example: `testuser` remains `testuser`
+- Example: `portal-svc` remains `portal-svc`
+
+No username sanitization applies, since this is a regular user account rather than a Keycloak service-account client.
 
 ## App-Exposer Whitelist Configuration
 
@@ -42,54 +33,11 @@ App-exposer supports bypassing resource tracking (quota enforcement, concurrent 
 ```yaml
 resource_tracking:
   bypass_users:
-    - deserviceaccount       # Sanitized form for "de-service-account"
+    - portal-svc             # The configured terrain.user
     - adminuser              # Regular username
-    - testuser123            # Another user
 ```
 
-**CRITICAL:** When adding service account usernames to the app-exposer whitelist, you must use the **sanitized form** that Formation sends, not the original form from your configuration.
-
-**Incorrect whitelist entry (will not match):**
-```yaml
-resource_tracking:
-  bypass_users:
-    - de-service-account    # Will NOT work - this has hyphens
-```
-
-**Correct whitelist entry (will match):**
-```yaml
-resource_tracking:
-  bypass_users:
-    - deserviceaccount      # Correct - sanitized form without hyphens
-```
-
-## Verifying Your Configuration
-
-To verify your whitelist configuration is correct:
-
-1. **Check Formation's service account username mapping** (in Formation's config.json):
-   ```json
-   {
-     "service_account_usernames": {
-       "app-runner": "de-service-account"
-     }
-   }
-   ```
-
-2. **Sanitize the username** - Remove all non-alphanumeric characters and lowercase:
-   - `de-service-account` → `deserviceaccount`
-
-3. **Add sanitized form to app-exposer whitelist** (in app-exposer's config.yml):
-   ```yaml
-   resource_tracking:
-     bypass_users:
-       - deserviceaccount
-   ```
-
-4. **Check app-exposer logs** when a job is submitted to confirm:
-   ```
-   Resource tracking disabled for user deserviceaccount (in bypass whitelist), skipping validation
-   ```
+Add the `terrain.user` account to the whitelist if mass user deletions should not count against its concurrent-job limits.
 
 ## When Whitelist Bypass Applies
 
@@ -104,5 +52,3 @@ Users in the whitelist bypass the following checks:
 - Resource usage overages from QMS (Quota Management Service)
 
 **Note:** Jobs are still created, tracked, and logged normally. Only the validation step is bypassed.
-
-For more details on Formation's username sanitization, see the [Formation README](https://github.com/cyverse-de/formation/blob/main/README.md#service-account-username-mapping).

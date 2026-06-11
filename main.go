@@ -18,7 +18,6 @@ import (
 	"github.com/cyverse-de/portal-conductor/config"
 	"github.com/cyverse-de/portal-conductor/datastore"
 	"github.com/cyverse-de/portal-conductor/emailsvc"
-	"github.com/cyverse-de/portal-conductor/formation"
 	"github.com/cyverse-de/portal-conductor/ldapclient"
 	"github.com/cyverse-de/portal-conductor/mailman"
 	"github.com/cyverse-de/portal-conductor/terrain"
@@ -84,44 +83,14 @@ func buildAPI(cfg *config.Config) http.Handler {
 
 	emailService := emailsvc.New(cfg.SMTP)
 
-	formationClient, formationAppID := buildFormation(cfg)
+	// The user-deletion app ID is resolved by name lazily on first async use,
+	// so an unreachable Terrain can't block startup and delay health checks.
+	if cfg.TerrainAsyncConfigured() && cfg.Terrain.UserDeletionAppID == "" {
+		log.Printf("User-deletion app ID not set; it will be resolved from name '%s' on first async use", cfg.Terrain.UserDeletionAppName)
+	}
 
-	a := api.New(cfg, ldapClient, ds, terrainClient, mailmanClient, emailService, formationClient, formationAppID)
+	a := api.New(cfg, ldapClient, ds, terrainClient, mailmanClient, emailService, cfg.Terrain.UserDeletionAppID)
 	return a.Handler()
-}
-
-// buildFormation creates the Formation client when configured and resolves
-// the user-deletion app ID by name if no explicit ID was given. Lookup
-// failures are non-fatal; the API retries lazily on first use.
-func buildFormation(cfg *config.Config) (*formation.Client, string) {
-	if !cfg.FormationConfigured() {
-		return nil, ""
-	}
-
-	kc := cfg.Formation.Keycloak
-	timeout := time.Duration(cfg.Formation.Timeout * float64(time.Second))
-	client, err := formation.New(cfg.Formation.BaseURL, kc.ServerURL, kc.Realm, kc.ClientID, kc.ClientSecret, cfg.Formation.VerifySSL, timeout)
-	if err != nil {
-		log.Fatalf("Failed to configure Formation client: %v", err)
-	}
-
-	appID := cfg.Formation.UserDeletionAppID
-	appName := cfg.Formation.UserDeletionAppName
-	if appID == "" && appName != "" {
-		log.Printf("Looking up Formation app ID for '%s' in system '%s'", appName, cfg.Formation.SystemID)
-		appID, err = client.GetAppIDByName(cfg.Formation.SystemID, appName)
-		switch {
-		case err != nil:
-			log.Printf("WARNING: Failed to lookup app ID for '%s': %v", appName, err)
-			log.Printf("User deletion will not work until app is created or app_id is configured")
-		case appID == "":
-			log.Printf("WARNING: Could not find app with name '%s' in system '%s'", appName, cfg.Formation.SystemID)
-			log.Printf("User deletion will not work until app is created or app_id is configured")
-		default:
-			log.Printf("Found app ID: %s", appID)
-		}
-	}
-	return client, appID
 }
 
 func newServer(addr string, handler http.Handler) *http.Server {

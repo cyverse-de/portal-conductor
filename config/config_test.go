@@ -46,10 +46,8 @@ func TestLoadFromFile(t *testing.T) {
 		{"ssl disabled by default", cfg.SSL.Enabled, false},
 		{"ssl port default", cfg.SSL.Port, 8443},
 		{"http port default", cfg.Server.HTTPPort, 8000},
-		{"formation app name default", cfg.Formation.UserDeletionAppName, "portal-delete-user"},
-		{"formation system id default", cfg.Formation.SystemID, "de"},
-		{"formation verify ssl default", cfg.Formation.VerifySSL, true},
-		{"formation timeout default", cfg.Formation.Timeout, 60.0},
+		{"terrain deletion app name default", cfg.Terrain.UserDeletionAppName, "portal-delete-user"},
+		{"terrain system id default", cfg.Terrain.SystemID, "de"},
 		{"mailman disabled by default", cfg.Mailman.Enabled, false},
 	}
 	for _, tt := range tests {
@@ -68,6 +66,7 @@ func TestLoadEnvFallback(t *testing.T) {
 	t.Setenv("MAILMAN_ENABLED", "TRUE")
 	t.Setenv("SSL_ENABLED", "no")
 	t.Setenv("HTTP_PORT", "9000")
+	t.Setenv("TERRAIN_USER_DELETION_APP_NAME", "")
 
 	cfg := Load()
 
@@ -82,6 +81,7 @@ func TestLoadEnvFallback(t *testing.T) {
 		{"ssl disabled via env", cfg.SSL.Enabled, false},
 		{"http port from env", cfg.Server.HTTPPort, 9000},
 		{"terrain url default", cfg.Terrain.URL, "http://terrain/"},
+		{"blanked deletion app name sticks", cfg.Terrain.UserDeletionAppName, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -98,7 +98,9 @@ func validConfig() *Config {
 	c.Auth.Password = "secret"
 	c.LDAP = LDAP{URL: "ldap://x", User: "u", Password: "p", BaseDN: "dc=x", CommunityGroup: "community", EveryoneGroup: "everyone"}
 	c.IRODS = IRODS{Host: "h", Port: "1247", User: "u", Password: "p", Zone: "z", AdminUser: "rodsadmin", IPCServicesUser: "ipcservices"}
-	c.Terrain = Terrain{URL: "http://t/", User: "tu", Password: "tp"}
+	c.Terrain.URL = "http://t/"
+	c.Terrain.User = "tu"
+	c.Terrain.Password = "tp"
 	return c
 }
 
@@ -139,6 +141,35 @@ func TestValidate(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantField) {
 				t.Errorf("error %q does not mention field %q", err, tt.wantField)
+			}
+		})
+	}
+}
+
+func TestTerrainAsyncConfigured(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Config)
+		want   bool
+	}{
+		{"configured with app name", func(c *Config) {}, true},
+		{"configured with app id only", func(c *Config) {
+			c.Terrain.UserDeletionAppName = ""
+			c.Terrain.UserDeletionAppID = "app-123"
+		}, true},
+		{"missing terrain url", func(c *Config) { c.Terrain.URL = "" }, false},
+		{"missing terrain password", func(c *Config) { c.Terrain.Password = "" }, false},
+		{"both app id and name blank", func(c *Config) {
+			c.Terrain.UserDeletionAppID = ""
+			c.Terrain.UserDeletionAppName = ""
+		}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			tt.mutate(cfg)
+			if got := cfg.TerrainAsyncConfigured(); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
 			}
 		})
 	}

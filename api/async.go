@@ -4,49 +4,70 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path"
+	"regexp"
 	"strings"
 	"time"
 
-	"github.com/cyverse-de/portal-conductor/formation"
 	"github.com/cyverse-de/portal-conductor/kinds"
+	"github.com/cyverse-de/portal-conductor/terrain"
 )
 
-// ensureFormationConfigured returns the Formation client or a 503 when the
-// integration is not configured.
-func (a *API) ensureFormationConfigured() (*formation.Client, error) {
-	if a.formation == nil {
-		return nil, &httpError{status: http.StatusServiceUnavailable, detail: "Formation integration not configured."}
+var uuidRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// analysisIDParam returns the analysis_id path value, rejecting non-UUIDs
+// with a 422 before they reach the apps service, which 500s on them.
+func analysisIDParam(r *http.Request) (string, error) {
+	id := r.PathValue("analysis_id")
+	if !uuidRE.MatchString(id) {
+		return "", &httpError{status: http.StatusUnprocessableEntity, detail: []kinds.ValidationError{
+			{Type: "uuid_parsing", Loc: []string{"path", "analysis_id"}, Msg: "Input should be a valid UUID"},
+		}}
 	}
-	return a.formation, nil
+	return id, nil
 }
 
-// resolveFormationAppID returns the user-deletion app ID, retrying the
+// ensureAsyncConfigured returns the Terrain client or a 503 when the async
+// user-deletion integration is not configured.
+func (a *API) ensureAsyncConfigured() (*terrain.Client, error) {
+	if a.terrain == nil || !a.cfg.TerrainAsyncConfigured() {
+		return nil, &httpError{status: http.StatusServiceUnavailable, detail: "Terrain integration not configured."}
+	}
+	return a.terrain, nil
+}
+
+// resolveDeletionAppID returns the user-deletion app ID, retrying the
 // by-name lookup if it was not resolved at startup.
-func (a *API) resolveFormationAppID(client *formation.Client) (string, error) {
+func (a *API) resolveDeletionAppID(client *terrain.Client) (string, error) {
 	a.appIDMu.Lock()
 	defer a.appIDMu.Unlock()
 
-	if a.formationAppID != "" {
-		return a.formationAppID, nil
+	if a.deletionAppID != "" {
+		return a.deletionAppID, nil
 	}
 
-	appName := a.cfg.Formation.UserDeletionAppName
-	systemID := a.cfg.Formation.SystemID
+	appName := a.cfg.Terrain.UserDeletionAppName
+	systemID := a.cfg.Terrain.SystemID
 	if appName != "" {
-		log.Printf("[user-deletion] App ID not cached, retrying lookup for '%s' in system '%s'", appName, systemID)
+		log.Printf("[user-deletion] App ID not cached, looking up '%s' in system '%s'", appName, systemID)
 		resolvedID, err := client.GetAppIDByName(systemID, appName)
 		if err != nil {
-			log.Printf("[user-deletion] App ID lookup failed: %v", err)
-		} else if resolvedID != "" {
+			// Propagate so this surfaces as a gateway error (502/503), not as
+			// a misconfiguration; Terrain is likely unreachable or degraded.
+			log.Printf("[user-deletion] App ID lookup failed; terrain may be unreachable or degraded: %v", err)
+			return "", err
+		}
+		if resolvedID != "" {
 			log.Printf("[user-deletion] Resolved app ID: %s", resolvedID)
-			a.formationAppID = resolvedID
+			a.deletionAppID = resolvedID
 			return resolvedID, nil
 		}
+		log.Printf("[user-deletion] No app named '%s' found in system '%s'", appName, systemID)
 	}
 
 	return "", &httpError{
 		status: http.StatusInternalServerError,
-		detail: "Formation user deletion app ID not configured. " +
+		detail: "Terrain user deletion app ID not configured. " +
 			"Check that either user_deletion_app_id is set or " +
 			"user_deletion_app_name refers to a valid app.",
 	}
@@ -75,13 +96,13 @@ func truthy(v any) bool {
 
 // usernameParamID finds the ID of the app parameter that receives the
 // username, by label, then by visible/required text parameter heuristics.
-func (a *API) usernameParamID(client *formation.Client, systemID, appID string) (string, error) {
-	appParams, err := client.GetAppParameters(systemID, appID)
+func (a *API) usernameParamID(client *terrain.Client, systemID, appID string) (string, error) {
+	jobView, err := client.GetAppJobView(systemID, appID)
 	if err != nil {
 		return "", err
 	}
 
-	groups, _ := appParams["groups"].([]any)
+	groups, _ := jobView["groups"].([]any)
 	for _, rawGroup := range groups {
 		group, ok := rawGroup.(map[string]any)
 		if !ok {
@@ -137,36 +158,42 @@ func (a *API) usernameParamID(client *formation.Client, systemID, appID string) 
 	}
 }
 
-// deleteUserAsync submits a Formation batch job that deletes the user.
+// deleteUserAsync submits a Terrain batch job that deletes the user.
 // @Summary      Delete user asynchronously
 // @Description  Submit a request to delete a user asynchronously from all systems including the database.
 // @Produce      json
 // @Param        username path string true "Username"
 // @Success      200 {object} kinds.AsyncDeleteUserResponse
-// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Formation not configured)"
+// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Terrain not configured)"
 // @Security     BasicAuth
 // @Router       /async/users/{username} [delete]
 func (a *API) deleteUserAsync(w http.ResponseWriter, r *http.Request) error {
 	username := r.PathValue("username")
 
-	client, err := a.ensureFormationConfigured()
+	client, err := a.ensureAsyncConfigured()
 	if err != nil {
 		return err
 	}
-	appID, err := a.resolveFormationAppID(client)
+	appID, err := a.resolveDeletionAppID(client)
 	if err != nil {
 		return err
 	}
-	systemID := a.cfg.Formation.SystemID
+	systemID := a.cfg.Terrain.SystemID
 
 	paramID, err := a.usernameParamID(client, systemID, appID)
 	if err != nil {
 		return err
 	}
 
+	// Terrain requires every submission field, including output_dir, which
+	// goes under the service account's home collection.
+	name := fmt.Sprintf("user-deletion-%s-%d", username, time.Now().Unix())
 	submission := map[string]any{
-		"name":   fmt.Sprintf("user-deletion-%s-%d", username, time.Now().Unix()),
-		"config": map[string]any{paramID: username},
+		"name":       name,
+		"config":     map[string]any{paramID: username},
+		"debug":      false,
+		"notify":     true,
+		"output_dir": path.Join(a.ds.UserHome(a.cfg.Terrain.User), "analyses", name),
 	}
 
 	log.Printf("Submitting deletion analysis for user: %s", username)
@@ -175,9 +202,9 @@ func (a *API) deleteUserAsync(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	analysisID, _ := result["analysis_id"].(string)
+	analysisID, _ := result["id"].(string)
 	if analysisID == "" {
-		return fmt.Errorf("formation launch response is missing analysis_id; the deletion may not have been submitted: %v", result)
+		return fmt.Errorf("terrain launch response is missing the analysis id; the deletion may not have been submitted: %v", result)
 	}
 	status, ok := result["status"].(string)
 	if !ok {
@@ -200,44 +227,50 @@ func (a *API) deleteUserAsync(w http.ResponseWriter, r *http.Request) error {
 // @Produce      json
 // @Param        analysis_id path string true "Analysis ID"
 // @Success      200 {object} kinds.AnalysisStatusResponse
-// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Formation not configured)"
+// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Terrain not configured)"
 // @Security     BasicAuth
 // @Router       /async/status/{analysis_id} [get]
 func (a *API) getDeletionStatus(w http.ResponseWriter, r *http.Request) error {
-	analysisID := r.PathValue("analysis_id")
+	analysisID, err := analysisIDParam(r)
+	if err != nil {
+		return err
+	}
 
-	client, err := a.ensureFormationConfigured()
+	client, err := a.ensureAsyncConfigured()
 	if err != nil {
 		return err
 	}
 
 	log.Printf("Checking status for analysis: %s", analysisID)
-	result, err := client.GetAnalysisStatus(analysisID)
+	result, err := client.GetAnalysisByID(analysisID)
 	if err != nil {
 		return err
 	}
 	log.Printf("Analysis %s status: %v", analysisID, result["status"])
 
-	resp := kinds.AnalysisStatusResponse{}
-	resp.AnalysisID, _ = result["analysis_id"].(string)
-	resp.Status, _ = result["status"].(string)
-	if urlReady, ok := result["url_ready"].(bool); ok {
-		resp.URLReady = &urlReady
+	status, ok := result["status"].(string)
+	if !ok {
+		status = "Unknown"
 	}
-	if analysisURL, ok := result["url"].(string); ok {
-		resp.URL = &analysisURL
-	}
-	writeJSON(w, http.StatusOK, resp)
+	// The deletion app is a batch job, so it never gets a VICE URL.
+	urlReady := false
+	writeJSON(w, http.StatusOK, kinds.AnalysisStatusResponse{
+		AnalysisID: analysisID,
+		Status:     status,
+		URLReady:   &urlReady,
+	})
 	return nil
 }
 
-// listAnalyses lists Formation analyses filtered by status (default Running).
+// listAnalyses lists the deletion-account analyses filtered by status
+// (default Running).
 // @Summary      List analyses
 // @Description  List deletion job analyses, optionally filtered by status (defaults to "Running").
 // @Produce      json
 // @Param        status query string false "Status filter (defaults to Running)"
 // @Success      200 {object} kinds.AnalysesListResponse
-// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Formation not configured)"
+// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Terrain not configured)"
 // @Security     BasicAuth
 // @Router       /async/analyses [get]
 func (a *API) listAnalyses(w http.ResponseWriter, r *http.Request) error {
@@ -246,7 +279,7 @@ func (a *API) listAnalyses(w http.ResponseWriter, r *http.Request) error {
 		status = "Running"
 	}
 
-	client, err := a.ensureFormationConfigured()
+	client, err := a.ensureAsyncConfigured()
 	if err != nil {
 		return err
 	}
@@ -265,7 +298,7 @@ func (a *API) listAnalyses(w http.ResponseWriter, r *http.Request) error {
 			continue
 		}
 		item := kinds.AnalysisListItem{}
-		item.AnalysisID, _ = analysis["analysis_id"].(string)
+		item.AnalysisID, _ = analysis["id"].(string)
 		item.Name, _ = analysis["name"].(string)
 		item.AppID, _ = analysis["app_id"].(string)
 		item.SystemID, _ = analysis["system_id"].(string)
@@ -278,25 +311,30 @@ func (a *API) listAnalyses(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// getAnalysisDetails passes through the full analysis document from Formation.
+// getAnalysisDetails passes through the analysis listing document from
+// Terrain.
 // @Summary      Get analysis details
 // @Description  Get the details of a specific deletion job analysis.
 // @Produce      json
 // @Param        analysis_id path string true "Analysis ID"
 // @Success      200 {object} interface{} "Returns raw analysis JSON representation"
-// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Formation not configured)"
+// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Terrain not configured)"
 // @Security     BasicAuth
 // @Router       /async/analyses/{analysis_id}/details [get]
 func (a *API) getAnalysisDetails(w http.ResponseWriter, r *http.Request) error {
-	analysisID := r.PathValue("analysis_id")
+	analysisID, err := analysisIDParam(r)
+	if err != nil {
+		return err
+	}
 
-	client, err := a.ensureFormationConfigured()
+	client, err := a.ensureAsyncConfigured()
 	if err != nil {
 		return err
 	}
 
 	log.Printf("Fetching details for analysis: %s", analysisID)
-	result, err := client.GetAnalysisDetails(analysisID)
+	result, err := client.GetAnalysisByID(analysisID)
 	if err != nil {
 		return err
 	}
