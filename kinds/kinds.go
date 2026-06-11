@@ -61,14 +61,14 @@ type ValidateResponse struct {
 	Valid bool `json:"valid"`
 }
 
-// AsyncDeleteUserResponse is returned when a Formation user-deletion job is submitted.
+// AsyncDeleteUserResponse is returned when a user-deletion job is submitted.
 type AsyncDeleteUserResponse struct {
 	User       string `json:"user"`
 	AnalysisID string `json:"analysis_id"`
 	Status     string `json:"status"`
 }
 
-// AnalysisStatusResponse carries the current status of a Formation analysis.
+// AnalysisStatusResponse carries the current status of a DE analysis.
 type AnalysisStatusResponse struct {
 	AnalysisID string  `json:"analysis_id"`
 	Status     string  `json:"status"`

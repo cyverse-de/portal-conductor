@@ -88,11 +88,15 @@ type IRODS struct {
 	IPCServicesUser string     `json:"ipcservices_user"`
 }
 
-// Terrain holds the base URL and service-account credentials for the Terrain API.
+// Terrain holds the base URL, service-account credentials, and async
+// user-deletion app settings for the Terrain API.
 type Terrain struct {
-	URL      string `json:"url"`
-	User     string `json:"user"`
-	Password string `json:"password"`
+	URL                 string `json:"url"`
+	User                string `json:"user"`
+	Password            string `json:"password"`
+	UserDeletionAppID   string `json:"user_deletion_app_id"`
+	UserDeletionAppName string `json:"user_deletion_app_name"`
+	SystemID            string `json:"system_id"`
 }
 
 // Mailman holds the base URL and admin password for the Mailman 2.1 interface.
@@ -124,37 +128,17 @@ type PortalDB struct {
 	SSLMode  string     `json:"sslmode"`
 }
 
-// Keycloak holds client credentials for the Keycloak identity provider.
-type Keycloak struct {
-	ServerURL    string `json:"server_url"`
-	Realm        string `json:"realm"`
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-}
-
-// Formation holds the URL, Keycloak credentials, and app settings for the Formation service.
-type Formation struct {
-	BaseURL             string   `json:"base_url"`
-	Keycloak            Keycloak `json:"keycloak"`
-	UserDeletionAppID   string   `json:"user_deletion_app_id"`
-	UserDeletionAppName string   `json:"user_deletion_app_name"`
-	SystemID            string   `json:"system_id"`
-	VerifySSL           bool     `json:"verify_ssl"`
-	Timeout             float64  `json:"timeout"`
-}
-
 // Config is the top-level configuration for portal-conductor.
 type Config struct {
-	SSL       SSL       `json:"ssl"`
-	Server    Server    `json:"server"`
-	Auth      Auth      `json:"auth"`
-	LDAP      LDAP      `json:"ldap"`
-	IRODS     IRODS     `json:"irods"`
-	Terrain   Terrain   `json:"terrain"`
-	Mailman   Mailman   `json:"mailman"`
-	SMTP      SMTP      `json:"smtp"`
-	Formation Formation `json:"formation"`
-	PortalDB  PortalDB  `json:"portal_db"`
+	SSL      SSL      `json:"ssl"`
+	Server   Server   `json:"server"`
+	Auth     Auth     `json:"auth"`
+	LDAP     LDAP     `json:"ldap"`
+	IRODS    IRODS    `json:"irods"`
+	Terrain  Terrain  `json:"terrain"`
+	Mailman  Mailman  `json:"mailman"`
+	SMTP     SMTP     `json:"smtp"`
+	PortalDB PortalDB `json:"portal_db"`
 }
 
 // defaults returns a Config pre-populated with the same defaults the Python
@@ -168,11 +152,9 @@ func defaults() *Config {
 		LDAP:   LDAP{CommunityGroup: "community"},
 		IRODS:  IRODS{AdminUser: "rodsadmin", IPCServicesUser: "ipcservices"},
 		SMTP:   SMTP{Host: "localhost", Port: "25", From: "noreply@cyverse.org"},
-		Formation: Formation{
+		Terrain: Terrain{
 			UserDeletionAppName: "portal-delete-user",
 			SystemID:            "de",
-			VerifySSL:           true,
-			Timeout:             60.0,
 		},
 		PortalDB: PortalDB{Port: "5432", SSLMode: "disable"},
 	}
@@ -244,9 +226,12 @@ func fromEnv() *Config {
 		IPCServicesUser: envOr("IPCSERVICES_USER", "ipcservices"),
 	}
 	c.Terrain = Terrain{
-		URL:      envOr("TERRAIN_URL", "http://terrain/"),
-		User:     os.Getenv("TERRAIN_USER"),
-		Password: os.Getenv("TERRAIN_PASSWORD"),
+		URL:                 envOr("TERRAIN_URL", "http://terrain/"),
+		User:                os.Getenv("TERRAIN_USER"),
+		Password:            os.Getenv("TERRAIN_PASSWORD"),
+		UserDeletionAppID:   os.Getenv("TERRAIN_USER_DELETION_APP_ID"),
+		UserDeletionAppName: envOr("TERRAIN_USER_DELETION_APP_NAME", "portal-delete-user"),
+		SystemID:            envOr("TERRAIN_SYSTEM_ID", "de"),
 	}
 	c.Mailman = Mailman{
 		Enabled:  envBool("MAILMAN_ENABLED", false),
@@ -270,20 +255,6 @@ func fromEnv() *Config {
 		Password: os.Getenv("PORTAL_DB_PASSWORD"),
 		SSLMode:  envOr("PORTAL_DB_SSLMODE", "disable"),
 	}
-	c.Formation = Formation{
-		BaseURL: os.Getenv("FORMATION_URL"),
-		Keycloak: Keycloak{
-			ServerURL:    os.Getenv("KEYCLOAK_SERVER_URL"),
-			Realm:        os.Getenv("KEYCLOAK_REALM"),
-			ClientID:     os.Getenv("KEYCLOAK_CLIENT_ID"),
-			ClientSecret: os.Getenv("KEYCLOAK_CLIENT_SECRET"),
-		},
-		UserDeletionAppID:   os.Getenv("FORMATION_USER_DELETION_APP_ID"),
-		UserDeletionAppName: envOr("FORMATION_USER_DELETION_APP_NAME", "portal-delete-user"),
-		SystemID:            envOr("FORMATION_SYSTEM_ID", "de"),
-		VerifySSL:           envBool("FORMATION_VERIFY_SSL", true),
-		Timeout:             60.0,
-	}
 	return c
 }
 
@@ -300,13 +271,13 @@ func LoadFrom(configFile string) *Config {
 	data, err := os.ReadFile(configFile)
 	if err == nil {
 		c := defaults()
-		if jsonErr := json.Unmarshal(data, c); jsonErr == nil {
+		jsonErr := json.Unmarshal(data, c)
+		if jsonErr == nil {
 			log.Printf("Loaded configuration from %s", configFile)
 			return c
-		} else {
-			log.Printf("Failed to load config from %s: %v", configFile, jsonErr)
-			log.Printf("Falling back to environment variables")
 		}
+		log.Printf("Failed to load config from %s: %v", configFile, jsonErr)
+		log.Printf("Falling back to environment variables")
 	}
 	return fromEnv()
 }
@@ -366,10 +337,11 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// FormationConfigured reports whether all settings needed for the Formation
-// integration are present.
-func (c *Config) FormationConfigured() bool {
-	f := c.Formation
-	return f.BaseURL != "" && f.Keycloak.ServerURL != "" && f.Keycloak.Realm != "" &&
-		f.Keycloak.ClientID != "" && f.Keycloak.ClientSecret != ""
+// TerrainAsyncConfigured reports whether the settings needed for the async
+// user-deletion endpoints are present. Operators can disable async deletion
+// by blanking both the app ID and the app name.
+func (c *Config) TerrainAsyncConfigured() bool {
+	t := c.Terrain
+	return t.URL != "" && t.User != "" && t.Password != "" &&
+		(t.UserDeletionAppID != "" || t.UserDeletionAppName != "")
 }

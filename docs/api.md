@@ -9,7 +9,7 @@
 | `/users/{username}/password` | POST | Change user password |
 | `/users/{username}/validate` | POST | Validate user credentials |
 
-## Async Operations (Formation)
+## Async Operations (Terrain)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|

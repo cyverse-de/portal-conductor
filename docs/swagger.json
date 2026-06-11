@@ -36,7 +36,7 @@
                         }
                     },
                     "503": {
-                        "description": "Service Unavailable (Formation not configured)",
+                        "description": "Service Unavailable (Terrain not configured)",
                         "schema": {
                             "$ref": "#/definitions/kinds.GenericResponse"
                         }
@@ -71,7 +71,7 @@
                         "schema": {}
                     },
                     "503": {
-                        "description": "Service Unavailable (Formation not configured)",
+                        "description": "Service Unavailable (Terrain not configured)",
                         "schema": {
                             "$ref": "#/definitions/kinds.GenericResponse"
                         }
@@ -108,7 +108,7 @@
                         }
                     },
                     "503": {
-                        "description": "Service Unavailable (Formation not configured)",
+                        "description": "Service Unavailable (Terrain not configured)",
                         "schema": {
                             "$ref": "#/definitions/kinds.GenericResponse"
                         }
@@ -145,7 +145,7 @@
                         }
                     },
                     "503": {
-                        "description": "Service Unavailable (Formation not configured)",
+                        "description": "Service Unavailable (Terrain not configured)",
                         "schema": {
                             "$ref": "#/definitions/kinds.GenericResponse"
                         }

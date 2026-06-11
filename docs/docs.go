@@ -43,7 +43,7 @@ const docTemplate = `{
                         }
                     },
                     "503": {
-                        "description": "Service Unavailable (Formation not configured)",
+                        "description": "Service Unavailable (Terrain not configured)",
                         "schema": {
                             "$ref": "#/definitions/kinds.GenericResponse"
                         }
@@ -78,7 +78,7 @@ const docTemplate = `{
                         "schema": {}
                     },
                     "503": {
-                        "description": "Service Unavailable (Formation not configured)",
+                        "description": "Service Unavailable (Terrain not configured)",
                         "schema": {
                             "$ref": "#/definitions/kinds.GenericResponse"
                         }
@@ -115,7 +115,7 @@ const docTemplate = `{
                         }
                     },
                     "503": {
-                        "description": "Service Unavailable (Formation not configured)",
+                        "description": "Service Unavailable (Terrain not configured)",
                         "schema": {
                             "$ref": "#/definitions/kinds.GenericResponse"
                         }
@@ -152,7 +152,7 @@ const docTemplate = `{
                         }
                     },
                     "503": {
-                        "description": "Service Unavailable (Formation not configured)",
+                        "description": "Service Unavailable (Terrain not configured)",
                         "schema": {
                             "$ref": "#/definitions/kinds.GenericResponse"
                         }

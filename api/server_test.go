@@ -44,7 +44,7 @@ func detailOf(t *testing.T, rec *httptest.ResponseRecorder) any {
 }
 
 func TestGreetingAndNotFound(t *testing.T) {
-	handler := New(testConfig(), nil, nil, nil, nil, nil, nil, "").Handler()
+	handler := New(testConfig(), nil, nil, nil, nil, nil, "").Handler()
 
 	t.Run("greeting is unauthenticated", func(t *testing.T) {
 		rec := doRequest(t, handler, http.MethodGet, "/", "", "", "")
@@ -92,7 +92,7 @@ func TestAuthentication(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := testConfig()
 			cfg.Auth.Enabled = tt.authEnabled
-			handler := New(cfg, nil, nil, nil, nil, nil, nil, "").Handler()
+			handler := New(cfg, nil, nil, nil, nil, nil, "").Handler()
 
 			rec := doRequest(t, handler, http.MethodGet, path, tt.user, tt.pass, "")
 			if rec.Code != tt.wantStatus {
@@ -114,7 +114,7 @@ func TestAuthEnabledWithoutConfiguredCredentials(t *testing.T) {
 	cfg := testConfig()
 	cfg.Auth.Username = ""
 	cfg.Auth.Password = ""
-	handler := New(cfg, nil, nil, nil, nil, nil, nil, "").Handler()
+	handler := New(cfg, nil, nil, nil, nil, nil, "").Handler()
 
 	rec := doRequest(t, handler, http.MethodGet, "/mailinglists/x/members", "any", "thing", "")
 	if rec.Code != http.StatusUnauthorized {
@@ -122,8 +122,8 @@ func TestAuthEnabledWithoutConfiguredCredentials(t *testing.T) {
 	}
 }
 
-func TestFormationNotConfigured(t *testing.T) {
-	handler := New(testConfig(), nil, nil, nil, nil, nil, nil, "").Handler()
+func TestAsyncNotConfigured(t *testing.T) {
+	handler := New(testConfig(), nil, nil, nil, nil, nil, "").Handler()
 
 	paths := []struct {
 		method, path string
@@ -139,7 +139,7 @@ func TestFormationNotConfigured(t *testing.T) {
 			if rec.Code != http.StatusServiceUnavailable {
 				t.Fatalf("got status %d, want 503", rec.Code)
 			}
-			if d := detailOf(t, rec); d != "Formation integration not configured." {
+			if d := detailOf(t, rec); d != "Terrain integration not configured." {
 				t.Errorf("got detail %v", d)
 			}
 		})
@@ -147,7 +147,7 @@ func TestFormationNotConfigured(t *testing.T) {
 }
 
 func TestRequestValidation(t *testing.T) {
-	handler := New(testConfig(), nil, nil, nil, nil, nil, nil, "").Handler()
+	handler := New(testConfig(), nil, nil, nil, nil, nil, "").Handler()
 
 	tests := []struct {
 		name         string
@@ -208,7 +208,7 @@ func TestRequestValidation(t *testing.T) {
 }
 
 func TestTrailingSlashUserRoute(t *testing.T) {
-	handler := New(testConfig(), nil, nil, nil, nil, nil, nil, "").Handler()
+	handler := New(testConfig(), nil, nil, nil, nil, nil, "").Handler()
 
 	// Both /users and /users/ must hit the create-user route; an incomplete
 	// body proves it reached validation (422) rather than the 404 catch-all.

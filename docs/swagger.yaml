@@ -267,7 +267,7 @@ paths:
           schema:
             $ref: '#/definitions/kinds.AnalysesListResponse'
         "503":
-          description: Service Unavailable (Formation not configured)
+          description: Service Unavailable (Terrain not configured)
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
       security:
@@ -289,7 +289,7 @@ paths:
           description: Returns raw analysis JSON representation
           schema: {}
         "503":
-          description: Service Unavailable (Formation not configured)
+          description: Service Unavailable (Terrain not configured)
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
       security:
@@ -312,7 +312,7 @@ paths:
           schema:
             $ref: '#/definitions/kinds.AnalysisStatusResponse'
         "503":
-          description: Service Unavailable (Formation not configured)
+          description: Service Unavailable (Terrain not configured)
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
       security:
@@ -336,7 +336,7 @@ paths:
           schema:
             $ref: '#/definitions/kinds.AsyncDeleteUserResponse'
         "503":
-          description: Service Unavailable (Formation not configured)
+          description: Service Unavailable (Terrain not configured)
           schema:
             $ref: '#/definitions/kinds.GenericResponse'
       security:
