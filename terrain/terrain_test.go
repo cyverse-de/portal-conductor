@@ -226,29 +226,17 @@ func decodeFilter(t *testing.T, filter string) []map[string]string {
 }
 
 func TestListAnalyses(t *testing.T) {
-	tests := []struct {
-		name       string
-		status     string
-		wantFilter []map[string]string
-	}{
-		{"status filter", "Running", []map[string]string{{"field": "status", "value": "Running"}}},
-		{"empty status lists all", "", nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, filters, _ := newAnalysesServer(t, map[string]any{"analyses": []any{}})
+	client, filters, _ := newAnalysesServer(t, map[string]any{"analyses": []any{}})
 
-			if _, err := client.ListAnalyses(tt.status); err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if len(*filters) != 1 {
-				t.Fatalf("expected 1 listing request, got %d", len(*filters))
-			}
-			got := decodeFilter(t, (*filters)[0])
-			if fmt.Sprint(got) != fmt.Sprint(tt.wantFilter) {
-				t.Errorf("got filter %v, want %v", got, tt.wantFilter)
-			}
-		})
+	if _, err := client.ListAnalyses("Running"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(*filters) != 1 {
+		t.Fatalf("expected 1 listing request, got %d", len(*filters))
+	}
+	want := []map[string]string{{"field": "status", "value": "Running"}}
+	if got := decodeFilter(t, (*filters)[0]); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("got filter %v, want %v", got, want)
 	}
 }
 

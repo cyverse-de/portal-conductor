@@ -1,14 +1,11 @@
 package api
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/cyverse-de/portal-conductor/terrain"
 )
@@ -17,22 +14,11 @@ import (
 // endpoint returning the given parameter groups.
 func newAppJobViewServer(t *testing.T, jobView map[string]any) *httptest.Server {
 	t.Helper()
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /token/keycloak", func(w http.ResponseWriter, r *http.Request) {
-		if _, _, ok := r.BasicAuth(); !ok {
-			http.Error(w, "missing basic auth", http.StatusUnauthorized)
-			return
-		}
-		claims, _ := json.Marshal(map[string]any{"exp": time.Now().Add(time.Hour).Unix()})
-		token := fmt.Sprintf("x.%s.x", base64.RawURLEncoding.EncodeToString(claims))
-		json.NewEncoder(w).Encode(map[string]any{"access_token": token}) //nolint:errcheck
+	return newTerrainTestServer(t, func(mux *http.ServeMux) {
+		mux.HandleFunc("GET /apps/de/app-123", func(w http.ResponseWriter, _ *http.Request) {
+			json.NewEncoder(w).Encode(jobView) //nolint:errcheck
+		})
 	})
-	mux.HandleFunc("GET /apps/de/app-123", func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(jobView) //nolint:errcheck
-	})
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-	return server
 }
 
 func TestUsernameParamID(t *testing.T) {

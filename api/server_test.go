@@ -17,6 +17,24 @@ func testConfig() *config.Config {
 	return cfg
 }
 
+// newTerrainTestServer serves Terrain's token endpoint plus any routes added
+// by configure.
+func newTerrainTestServer(t *testing.T, configure func(mux *http.ServeMux)) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /token/keycloak", func(w http.ResponseWriter, r *http.Request) {
+		if _, _, ok := r.BasicAuth(); !ok {
+			http.Error(w, "missing basic auth", http.StatusUnauthorized)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"access_token": "tok"}) //nolint:errcheck
+	})
+	configure(mux)
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server
+}
+
 func doRequest(t *testing.T, handler http.Handler, method, path, user, pass, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	var reqBody *strings.Reader
@@ -125,13 +143,14 @@ func TestAuthEnabledWithoutConfiguredCredentials(t *testing.T) {
 func TestAsyncNotConfigured(t *testing.T) {
 	handler := New(testConfig(), nil, nil, nil, nil, nil, "").Handler()
 
+	const analysisID = "6ded3c88-65d7-11f1-b562-32f7aa1defe5"
 	paths := []struct {
 		method, path string
 	}{
 		{http.MethodDelete, "/async/users/somebody"},
-		{http.MethodGet, "/async/status/some-id"},
+		{http.MethodGet, "/async/status/" + analysisID},
 		{http.MethodGet, "/async/analyses"},
-		{http.MethodGet, "/async/analyses/some-id/details"},
+		{http.MethodGet, "/async/analyses/" + analysisID + "/details"},
 	}
 	for _, p := range paths {
 		t.Run(p.method+" "+p.path, func(t *testing.T) {
@@ -141,6 +160,22 @@ func TestAsyncNotConfigured(t *testing.T) {
 			}
 			if d := detailOf(t, rec); d != "Terrain integration not configured." {
 				t.Errorf("got detail %v", d)
+			}
+		})
+	}
+}
+
+func TestAsyncRejectsInvalidAnalysisID(t *testing.T) {
+	handler := New(testConfig(), nil, nil, nil, nil, nil, "").Handler()
+
+	for _, p := range []string{"/async/status/not-a-uuid", "/async/analyses/not-a-uuid/details"} {
+		t.Run(p, func(t *testing.T) {
+			rec := doRequest(t, handler, http.MethodGet, p, "admin", "secret", "")
+			if rec.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("got status %d, want 422 (body: %s)", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), "valid UUID") {
+				t.Errorf("body %s does not mention UUID validation", rec.Body.String())
 			}
 		})
 	}

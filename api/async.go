@@ -4,12 +4,28 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/cyverse-de/portal-conductor/kinds"
 	"github.com/cyverse-de/portal-conductor/terrain"
 )
+
+var uuidRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// analysisIDParam returns the analysis_id path value, rejecting non-UUIDs
+// with a 422 before they reach the apps service, which 500s on them.
+func analysisIDParam(r *http.Request) (string, error) {
+	id := r.PathValue("analysis_id")
+	if !uuidRE.MatchString(id) {
+		return "", &httpError{status: http.StatusUnprocessableEntity, detail: []kinds.ValidationError{
+			{Type: "uuid_parsing", Loc: []string{"path", "analysis_id"}, Msg: "Input should be a valid UUID"},
+		}}
+	}
+	return id, nil
+}
 
 // ensureAsyncConfigured returns the Terrain client or a 503 when the async
 // user-deletion integration is not configured.
@@ -33,15 +49,20 @@ func (a *API) resolveDeletionAppID(client *terrain.Client) (string, error) {
 	appName := a.cfg.Terrain.UserDeletionAppName
 	systemID := a.cfg.Terrain.SystemID
 	if appName != "" {
-		log.Printf("[user-deletion] App ID not cached, retrying lookup for '%s' in system '%s'", appName, systemID)
+		log.Printf("[user-deletion] App ID not cached, looking up '%s' in system '%s'", appName, systemID)
 		resolvedID, err := client.GetAppIDByName(systemID, appName)
 		if err != nil {
-			log.Printf("[user-deletion] App ID lookup failed: %v", err)
-		} else if resolvedID != "" {
+			// Propagate so this surfaces as a gateway error (502/503), not as
+			// a misconfiguration; Terrain is likely unreachable or degraded.
+			log.Printf("[user-deletion] App ID lookup failed; terrain may be unreachable or degraded: %v", err)
+			return "", err
+		}
+		if resolvedID != "" {
 			log.Printf("[user-deletion] Resolved app ID: %s", resolvedID)
 			a.deletionAppID = resolvedID
 			return resolvedID, nil
 		}
+		log.Printf("[user-deletion] No app named '%s' found in system '%s'", appName, systemID)
 	}
 
 	return "", &httpError{
@@ -172,7 +193,7 @@ func (a *API) deleteUserAsync(w http.ResponseWriter, r *http.Request) error {
 		"config":     map[string]any{paramID: username},
 		"debug":      false,
 		"notify":     true,
-		"output_dir": fmt.Sprintf("/%s/home/%s/analyses/%s", a.cfg.IRODS.Zone, a.cfg.Terrain.User, name),
+		"output_dir": path.Join(a.ds.UserHome(a.cfg.Terrain.User), "analyses", name),
 	}
 
 	log.Printf("Submitting deletion analysis for user: %s", username)
@@ -206,11 +227,15 @@ func (a *API) deleteUserAsync(w http.ResponseWriter, r *http.Request) error {
 // @Produce      json
 // @Param        analysis_id path string true "Analysis ID"
 // @Success      200 {object} kinds.AnalysisStatusResponse
+// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
 // @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Terrain not configured)"
 // @Security     BasicAuth
 // @Router       /async/status/{analysis_id} [get]
 func (a *API) getDeletionStatus(w http.ResponseWriter, r *http.Request) error {
-	analysisID := r.PathValue("analysis_id")
+	analysisID, err := analysisIDParam(r)
+	if err != nil {
+		return err
+	}
 
 	client, err := a.ensureAsyncConfigured()
 	if err != nil {
@@ -293,11 +318,15 @@ func (a *API) listAnalyses(w http.ResponseWriter, r *http.Request) error {
 // @Produce      json
 // @Param        analysis_id path string true "Analysis ID"
 // @Success      200 {object} interface{} "Returns raw analysis JSON representation"
+// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
 // @Failure      503 {object} kinds.GenericResponse "Service Unavailable (Terrain not configured)"
 // @Security     BasicAuth
 // @Router       /async/analyses/{analysis_id}/details [get]
 func (a *API) getAnalysisDetails(w http.ResponseWriter, r *http.Request) error {
-	analysisID := r.PathValue("analysis_id")
+	analysisID, err := analysisIDParam(r)
+	if err != nil {
+		return err
+	}
 
 	client, err := a.ensureAsyncConfigured()
 	if err != nil {

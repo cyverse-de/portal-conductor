@@ -225,12 +225,18 @@ func fromEnv() *Config {
 		AdminUser:       envOr("DS_ADMIN_USER", "rodsadmin"),
 		IPCServicesUser: envOr("IPCSERVICES_USER", "ipcservices"),
 	}
+	// Setting TERRAIN_USER_DELETION_APP_NAME to an empty string (rather than
+	// leaving it unset) must stick, so operators can disable async deletion.
+	deletionAppName, ok := os.LookupEnv("TERRAIN_USER_DELETION_APP_NAME")
+	if !ok {
+		deletionAppName = "portal-delete-user"
+	}
 	c.Terrain = Terrain{
 		URL:                 envOr("TERRAIN_URL", "http://terrain/"),
 		User:                os.Getenv("TERRAIN_USER"),
 		Password:            os.Getenv("TERRAIN_PASSWORD"),
 		UserDeletionAppID:   os.Getenv("TERRAIN_USER_DELETION_APP_ID"),
-		UserDeletionAppName: envOr("TERRAIN_USER_DELETION_APP_NAME", "portal-delete-user"),
+		UserDeletionAppName: deletionAppName,
 		SystemID:            envOr("TERRAIN_SYSTEM_ID", "de"),
 	}
 	c.Mailman = Mailman{

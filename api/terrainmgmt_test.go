@@ -1,31 +1,12 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/cyverse-de/portal-conductor/terrain"
 )
-
-// newTerrainServer serves the token endpoint plus a job-limits endpoint with
-// the given status and body.
-func newTerrainServer(t *testing.T, limitsStatus int, limitsBody string) *httptest.Server {
-	t.Helper()
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /token/keycloak", func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{"access_token": "tok"}) //nolint:errcheck
-	})
-	mux.HandleFunc("/admin/settings/concurrent-job-limits/", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(limitsStatus)
-		w.Write([]byte(limitsBody)) //nolint:errcheck
-	})
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-	return server
-}
 
 func TestGetJobLimits(t *testing.T) {
 	tests := []struct {
@@ -58,7 +39,12 @@ func TestGetJobLimits(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := newTerrainServer(t, tt.limitsStatus, tt.limitsBody)
+			server := newTerrainTestServer(t, func(mux *http.ServeMux) {
+				mux.HandleFunc("/admin/settings/concurrent-job-limits/", func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(tt.limitsStatus)
+					w.Write([]byte(tt.limitsBody)) //nolint:errcheck
+				})
+			})
 			terrainClient, err := terrain.New(server.URL, "svc", "pw")
 			if err != nil {
 				t.Fatal(err)

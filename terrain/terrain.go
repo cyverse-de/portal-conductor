@@ -256,18 +256,15 @@ func (c *Client) LaunchAnalysis(systemID, appID string, submission map[string]an
 	return result, nil
 }
 
-// listAnalysesFiltered lists the service account's analyses, optionally
-// filtered by one field (e.g. status or id). The filter parameter is a
-// JSON-encoded array of {field, value} objects.
+// listAnalysesFiltered lists the service account's analyses filtered by one
+// field (e.g. status or id). The filter parameter is a JSON-encoded array of
+// {field, value} objects.
 func (c *Client) listAnalysesFiltered(field, value string) (map[string]any, error) {
-	requestURL := c.apiURL("analyses")
-	if field != "" {
-		filter, err := json.Marshal([]map[string]string{{"field": field, "value": value}})
-		if err != nil {
-			return nil, err
-		}
-		requestURL += "?" + url.Values{"filter": {string(filter)}}.Encode()
+	filter, err := json.Marshal([]map[string]string{{"field": field, "value": value}})
+	if err != nil {
+		return nil, err
 	}
+	requestURL := c.apiURL("analyses") + "?" + url.Values{"filter": {string(filter)}}.Encode()
 	var result map[string]any
 	if err := c.doAuthedJSON(http.MethodGet, requestURL, nil, &result); err != nil {
 		return nil, err
@@ -275,13 +272,9 @@ func (c *Client) listAnalysesFiltered(field, value string) (map[string]any, erro
 	return result, nil
 }
 
-// ListAnalyses lists analyses filtered by status; an empty status lists all.
+// ListAnalyses lists analyses with the given status.
 func (c *Client) ListAnalyses(status string) (map[string]any, error) {
-	field := ""
-	if status != "" {
-		field = "status"
-	}
-	return c.listAnalysesFiltered(field, status)
+	return c.listAnalysesFiltered("status", status)
 }
 
 // GetAnalysisByID returns the analysis listing entry for analysisID, or a

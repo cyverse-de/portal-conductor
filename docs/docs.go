@@ -77,6 +77,12 @@ const docTemplate = `{
                         "description": "Returns raw analysis JSON representation",
                         "schema": {}
                     },
+                    "422": {
+                        "description": "Validation error",
+                        "schema": {
+                            "$ref": "#/definitions/kinds.ValidationErrorResponse"
+                        }
+                    },
                     "503": {
                         "description": "Service Unavailable (Terrain not configured)",
                         "schema": {
@@ -112,6 +118,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/kinds.AnalysisStatusResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "schema": {
+                            "$ref": "#/definitions/kinds.ValidationErrorResponse"
                         }
                     },
                     "503": {

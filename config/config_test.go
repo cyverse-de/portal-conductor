@@ -66,6 +66,7 @@ func TestLoadEnvFallback(t *testing.T) {
 	t.Setenv("MAILMAN_ENABLED", "TRUE")
 	t.Setenv("SSL_ENABLED", "no")
 	t.Setenv("HTTP_PORT", "9000")
+	t.Setenv("TERRAIN_USER_DELETION_APP_NAME", "")
 
 	cfg := Load()
 
@@ -80,6 +81,7 @@ func TestLoadEnvFallback(t *testing.T) {
 		{"ssl disabled via env", cfg.SSL.Enabled, false},
 		{"http port from env", cfg.Server.HTTPPort, 9000},
 		{"terrain url default", cfg.Terrain.URL, "http://terrain/"},
+		{"blanked deletion app name sticks", cfg.Terrain.UserDeletionAppName, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -83,38 +83,14 @@ func buildAPI(cfg *config.Config) http.Handler {
 
 	emailService := emailsvc.New(cfg.SMTP)
 
-	deletionAppID := resolveDeletionAppID(cfg, terrainClient)
+	// The user-deletion app ID is resolved by name lazily on first async use,
+	// so an unreachable Terrain can't block startup and delay health checks.
+	if cfg.TerrainAsyncConfigured() && cfg.Terrain.UserDeletionAppID == "" {
+		log.Printf("User-deletion app ID not set; it will be resolved from name '%s' on first async use", cfg.Terrain.UserDeletionAppName)
+	}
 
-	a := api.New(cfg, ldapClient, ds, terrainClient, mailmanClient, emailService, deletionAppID)
+	a := api.New(cfg, ldapClient, ds, terrainClient, mailmanClient, emailService, cfg.Terrain.UserDeletionAppID)
 	return a.Handler()
-}
-
-// resolveDeletionAppID resolves the user-deletion app ID by name when no
-// explicit ID was configured. Lookup failures are non-fatal; the API retries
-// lazily on first use.
-func resolveDeletionAppID(cfg *config.Config, client *terrain.Client) string {
-	if !cfg.TerrainAsyncConfigured() {
-		return ""
-	}
-
-	appID := cfg.Terrain.UserDeletionAppID
-	appName := cfg.Terrain.UserDeletionAppName
-	if appID == "" && appName != "" {
-		log.Printf("Looking up Terrain app ID for '%s' in system '%s'", appName, cfg.Terrain.SystemID)
-		resolvedID, err := client.GetAppIDByName(cfg.Terrain.SystemID, appName)
-		switch {
-		case err != nil:
-			log.Printf("WARNING: Failed to lookup app ID for '%s': %v", appName, err)
-			log.Printf("User deletion will not work until app is created or app_id is configured")
-		case resolvedID == "":
-			log.Printf("WARNING: Could not find app with name '%s' in system '%s'", appName, cfg.Terrain.SystemID)
-			log.Printf("User deletion will not work until app is created or app_id is configured")
-		default:
-			log.Printf("Found app ID: %s", resolvedID)
-			appID = resolvedID
-		}
-	}
-	return appID
 }
 
 func newServer(addr string, handler http.Handler) *http.Server {
