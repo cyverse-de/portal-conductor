@@ -89,7 +89,8 @@ func GetOccupationName(ctx context.Context, db *sql.DB, occupationID int) (strin
 
 // CreateUserWithEmail creates a user record and its associated email address
 // in a single transaction. Returns the new user's database ID.
-func CreateUserWithEmail(ctx context.Context, db *sql.DB, data CreateUserData, emailVerified bool) (int64, error) {
+// The email address is marked verified if and only if data.HasVerifiedEmail is true.
+func CreateUserWithEmail(ctx context.Context, db *sql.DB, data CreateUserData) (int64, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("beginning transaction: %w", err)
@@ -101,7 +102,7 @@ func CreateUserWithEmail(ctx context.Context, db *sql.DB, data CreateUserData, e
 		return 0, err
 	}
 
-	if err := createEmailAddressTx(ctx, tx, userID, data.Email, true, emailVerified); err != nil {
+	if err := createEmailAddressTx(ctx, tx, userID, data.Email, true, data.HasVerifiedEmail); err != nil {
 		return 0, err
 	}
 

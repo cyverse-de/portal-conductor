@@ -273,8 +273,9 @@ func (a *API) createPortalUser(w http.ResponseWriter, r *http.Request) error {
 		GridInstitutionID: req.GridInstitutionID,
 		HasVerifiedEmail:  true, // SSO users arrive from a trusted IdP.
 	}
-	// emailVerified=true: the IdP has already validated ownership of this address.
-	userID, err := portaldb.CreateUserWithEmail(ctx, a.portalDB, userData, true)
+	// emailVerified is derived from HasVerifiedEmail — both fields are set
+	// together so they can't diverge.
+	userID, err := portaldb.CreateUserWithEmail(ctx, a.portalDB, userData)
 	if err != nil {
 		return fmt.Errorf("creating portal user: %w", err)
 	}
