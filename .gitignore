@@ -15,3 +15,6 @@ portal-delete-user.json
 .lsp/
 build.json
 ssl-certs/
+jobservices.yml
+prod-config.json
+qa-config.json
