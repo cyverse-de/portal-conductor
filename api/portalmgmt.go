@@ -252,7 +252,8 @@ func (a *API) createPortalUser(w http.ResponseWriter, r *http.Request) error {
 		occupationName = "Unknown"
 	}
 
-	// 1. Create user in portal database.
+	// 1. Create user and email address in the portal database atomically.
+	// If either insert fails, the transaction rolls back and no cleanup is needed.
 	log.Printf("Creating user in portal database: %s", req.Username)
 	userData := portaldb.CreateUserData{
 		Username:          req.Username,
@@ -272,19 +273,23 @@ func (a *API) createPortalUser(w http.ResponseWriter, r *http.Request) error {
 		GridInstitutionID: req.GridInstitutionID,
 		HasVerifiedEmail:  true, // SSO users arrive from a trusted IdP.
 	}
-	userID, err := portaldb.CreateUser(ctx, a.portalDB, userData)
+	// emailVerified=true: the IdP has already validated ownership of this address.
+	userID, err := portaldb.CreateUserWithEmail(ctx, a.portalDB, userData, true)
 	if err != nil {
 		return fmt.Errorf("creating portal user: %w", err)
 	}
 
-	// 2. Create email address record. Marked as verified because SSO users
-	// arrive from a trusted IdP that has already validated their email.
-	log.Printf("Creating email address record for user %d", userID)
-	if err := portaldb.CreateEmailAddress(ctx, a.portalDB, userID, req.Email, true, true); err != nil {
-		return fmt.Errorf("creating email address: %w", err)
+	// compensate rolls back the portal DB records if a downstream step fails,
+	// so that a retry with the same username/email can succeed.
+	compensate := func(cause error, step string) error {
+		log.Printf("Provisioning failed at %s for user %s: %v — removing portal DB records", step, req.Username, cause)
+		if delErr := portaldb.DeleteUserByID(ctx, a.portalDB, userID); delErr != nil {
+			log.Printf("WARNING: compensation failed for user %s (id=%d): %v — manual cleanup required", req.Username, userID, delErr)
+		}
+		return fmt.Errorf("%s: %w", step, cause)
 	}
 
-	// 3. Create user in LDAP with default groups.
+	// 2. Create user in LDAP with default groups.
 	uidNumber := userID + int64(a.cfg.Security.UIDNumberOffset)
 	log.Printf("Creating LDAP user: %s (uid: %d)", req.Username, uidNumber)
 
@@ -300,16 +305,16 @@ func (a *API) createPortalUser(w http.ResponseWriter, r *http.Request) error {
 		Title:        occupationName,
 	}
 	if err := a.ldap.CreateUserWithGroups(ldapUser, a.cfg.LDAP.EveryoneGroup, a.cfg.LDAP.CommunityGroup); err != nil {
-		return fmt.Errorf("creating LDAP user: %w", err)
+		return compensate(err, "creating LDAP user")
 	}
 
-	// 4. Create user in DataStore.
+	// 3. Create user in DataStore.
 	log.Printf("Creating DataStore user: %s", req.Username)
 	if err := a.ds.CreateUserWithPermissions(req.Username, password, a.cfg.IRODS.IPCServicesUser, a.cfg.IRODS.AdminUser); err != nil {
-		return fmt.Errorf("creating DataStore user: %w", err)
+		return compensate(err, "creating DataStore user")
 	}
 
-	// 5. Set job limits via Terrain (optional).
+	// 4. Set job limits via Terrain (optional).
 	if a.terrain != nil && req.JobLimit != nil {
 		log.Printf("Setting job limits for user: %s", req.Username)
 		if limitErr := a.terrain.SetConcurrentJobLimits(req.Username, *req.JobLimit); limitErr != nil {

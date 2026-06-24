@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 )
@@ -86,12 +87,59 @@ func GetOccupationName(ctx context.Context, db *sql.DB, occupationID int) (strin
 	return name, nil
 }
 
-// CreateUser inserts a new user into account_user and returns the new user's
-// database ID.
-func CreateUser(ctx context.Context, db *sql.DB, data CreateUserData) (int64, error) {
+// CreateUserWithEmail creates a user record and its associated email address
+// in a single transaction. Returns the new user's database ID.
+func CreateUserWithEmail(ctx context.Context, db *sql.DB, data CreateUserData, emailVerified bool) (int64, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	userID, err := createUserTx(ctx, tx, data)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := createEmailAddressTx(ctx, tx, userID, data.Email, true, emailVerified); err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing user creation transaction: %w", err)
+	}
+	return userID, nil
+}
+
+// DeleteUserByID removes a user and their email addresses from the portal
+// database. This is used as a best-effort compensation when downstream
+// provisioning (LDAP, DataStore) fails after the portal DB insert succeeded.
+func DeleteUserByID(ctx context.Context, db *sql.DB, userID int64) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning compensation transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM account_emailaddress WHERE user_id = $1", userID); err != nil {
+		return fmt.Errorf("deleting email addresses for user %d: %w", userID, err)
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM account_user WHERE id = $1", userID); err != nil {
+		return fmt.Errorf("deleting user %d: %w", userID, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing compensation transaction: %w", err)
+	}
+	log.Printf("Compensation: removed portal DB records for user ID %d", userID)
+	return nil
+}
+
+// createUserTx inserts a new user within an existing transaction.
+func createUserTx(ctx context.Context, tx *sql.Tx, data CreateUserData) (int64, error) {
 	now := time.Now().UTC()
 	var userID int64
-	err := db.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		INSERT INTO account_user (
 			username, email, password, first_name, last_name,
 			institution, department, occupation_id, funding_agency_id,
@@ -121,15 +169,15 @@ func CreateUser(ctx context.Context, db *sql.DB, data CreateUserData) (int64, er
 		data.RegionID,
 		data.ResearchAreaID,
 		data.AwareChannelID,
-		false,                // is_superuser
-		false,                // is_staff
-		true,                 // is_active
+		false,                 // is_superuser
+		false,                 // is_staff
+		true,                  // is_active
 		data.HasVerifiedEmail, // has_verified_email
-		true,                 // participate_in_study
-		true,                 // subscribe_to_newsletter
-		"",                   // orcid_id
-		now,                  // date_joined
-		now,                  // updated_at
+		true,                  // participate_in_study
+		true,                  // subscribe_to_newsletter
+		"",                    // orcid_id
+		now,                   // date_joined
+		now,                   // updated_at
 		data.GridInstitutionID,
 	).Scan(&userID)
 	if err != nil {
@@ -138,10 +186,10 @@ func CreateUser(ctx context.Context, db *sql.DB, data CreateUserData) (int64, er
 	return userID, nil
 }
 
-// CreateEmailAddress inserts an email address record for a user.
-func CreateEmailAddress(ctx context.Context, db *sql.DB, userID int64, email string, primary bool, verified bool) error {
+// createEmailAddressTx inserts an email address record within an existing transaction.
+func createEmailAddressTx(ctx context.Context, tx *sql.Tx, userID int64, email string, primary bool, verified bool) error {
 	now := time.Now().UTC()
-	_, err := db.ExecContext(ctx, `
+	_, err := tx.ExecContext(ctx, `
 		INSERT INTO account_emailaddress (
 			user_id, email, "primary", verified, created_at, updated_at
 		) VALUES ($1, $2, $3, $4, $5, $6)`,
