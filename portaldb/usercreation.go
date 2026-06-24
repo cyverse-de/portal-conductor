@@ -33,8 +33,8 @@ type CreateUserData struct {
 func UserExistsByUsername(ctx context.Context, db *sql.DB, username string) (bool, error) {
 	var exists bool
 	err := db.QueryRowContext(ctx,
-		"SELECT EXISTS(SELECT 1 FROM account_user WHERE username = $1)",
-		username,
+		"SELECT EXISTS(SELECT 1 FROM account_user WHERE LOWER(username) = $1)",
+		strings.ToLower(username),
 	).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("checking username existence: %w", err)
@@ -46,8 +46,8 @@ func UserExistsByUsername(ctx context.Context, db *sql.DB, username string) (boo
 func IsRestrictedUsername(ctx context.Context, db *sql.DB, username string) (bool, error) {
 	var exists bool
 	err := db.QueryRowContext(ctx,
-		"SELECT EXISTS(SELECT 1 FROM account_restrictedusername WHERE username = $1)",
-		username,
+		"SELECT EXISTS(SELECT 1 FROM account_restrictedusername WHERE LOWER(username) = $1)",
+		strings.ToLower(username),
 	).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("checking restricted username: %w", err)

@@ -285,7 +285,7 @@ func (a *API) createPortalUser(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	// 3. Create user in LDAP with default groups.
-	uidNumber := int(userID) + a.cfg.Security.UIDNumberOffset
+	uidNumber := userID + int64(a.cfg.Security.UIDNumberOffset)
 	log.Printf("Creating LDAP user: %s (uid: %d)", req.Username, uidNumber)
 
 	ldapUser := kinds.CreateUserRequest{
@@ -293,7 +293,7 @@ func (a *API) createPortalUser(w http.ResponseWriter, r *http.Request) error {
 		LastName:     req.LastName,
 		Email:        req.Email,
 		Username:     req.Username,
-		UserUID:      strconv.Itoa(uidNumber),
+		UserUID:      strconv.FormatInt(uidNumber, 10),
 		Password:     password,
 		Department:   req.Department,
 		Organization: req.Institution,
