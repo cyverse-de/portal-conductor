@@ -128,6 +128,11 @@ type PortalDB struct {
 	SSLMode  string     `json:"sslmode"`
 }
 
+// Security holds security-related settings for user provisioning.
+type Security struct {
+	UIDNumberOffset int `json:"uid_number_offset"`
+}
+
 // Config is the top-level configuration for portal-conductor.
 type Config struct {
 	SSL      SSL      `json:"ssl"`
@@ -139,6 +144,7 @@ type Config struct {
 	Mailman  Mailman  `json:"mailman"`
 	SMTP     SMTP     `json:"smtp"`
 	PortalDB PortalDB `json:"portal_db"`
+	Security Security `json:"security"`
 }
 
 // defaults returns a Config pre-populated with the same defaults the Python
@@ -157,6 +163,7 @@ func defaults() *Config {
 			SystemID:            "de",
 		},
 		PortalDB: PortalDB{Port: "5432", SSLMode: "disable"},
+		Security: Security{UIDNumberOffset: 2831},
 	}
 }
 
@@ -260,6 +267,9 @@ func fromEnv() *Config {
 		User:     os.Getenv("PORTAL_DB_USER"),
 		Password: os.Getenv("PORTAL_DB_PASSWORD"),
 		SSLMode:  envOr("PORTAL_DB_SSLMODE", "disable"),
+	}
+	c.Security = Security{
+		UIDNumberOffset: envInt("UID_NUMBER_OFFSET", 2831),
 	}
 	return c
 }
