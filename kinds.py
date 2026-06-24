@@ -176,22 +176,27 @@ class UsernameValidationResponse(BaseModel):
 
 
 class CreatePortalUserRequest(BaseModel):
-    """Request to create a user in all systems (Portal DB, LDAP, DataStore, Terrain)."""
+    """Request to create a user in all systems (Portal DB, LDAP, DataStore, Terrain).
+
+    Only username, email, first_name, and last_name are required. All other fields
+    have sensible defaults suitable for SSO-provisioned users where detailed profile
+    information is not available at account creation time.
+    """
 
     username: str
     email: str
-    password: str
     first_name: str
     last_name: str
-    department: str
-    institution: str
-    occupation_id: int
-    funding_agency_id: int
-    gender_id: int
-    ethnicity_id: int
-    region_id: int
-    research_area_id: int
-    aware_channel_id: int
+    password: str | None = None
+    department: str = "Not Provided"
+    institution: str = "Not Provided"
+    occupation_id: int = 13        # "Not Provided"
+    funding_agency_id: int = 21    # "Not Provided"
+    gender_id: int = 11            # "Not Provided"
+    ethnicity_id: int = 8          # "Not Provided"
+    region_id: int = 4394          # "Not Provided" (US)
+    research_area_id: int = 155    # "Not Provided"
+    aware_channel_id: int = 11     # "Not Provided"
     grid_institution_id: int | None = None
     job_limit: int | None = None
 

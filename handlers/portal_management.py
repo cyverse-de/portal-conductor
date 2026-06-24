@@ -5,6 +5,7 @@ This module contains endpoints for portal database operations including
 checking user/email existence and creating users across all systems.
 """
 
+import secrets
 import sys
 
 from fastapi import APIRouter, HTTPException
@@ -211,6 +212,10 @@ def create_portal_user(
             detail="Email already in use.",
         )
 
+    # Generate a random password if none was provided (SSO users don't need one,
+    # but LDAP and iRODS require a password to be set).
+    password = request.password if request.password else secrets.token_urlsafe(48)
+
     # Get occupation name for LDAP title field
     occupation_name = portal_db.get_occupation_name(request.occupation_id)
     if not occupation_name:
@@ -260,7 +265,7 @@ def create_portal_user(
         email=request.email,
         username=request.username,
         user_uid=user_uid,
-        password=request.password,
+        password=password,
         department=request.department,
         organization=request.institution,
         title=occupation_name,
@@ -277,7 +282,7 @@ def create_portal_user(
     print(f"Creating DataStore user: {request.username}", file=sys.stderr)
     ds_api.create_datastore_user_with_permissions(
         username=request.username,
-        password=request.password,
+        password=password,
         ipcservices_user=ipcservices_user,
         ds_admin_user=ds_admin_user,
     )
