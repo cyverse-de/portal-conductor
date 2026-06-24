@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/cyverse-de/portal-conductor/kinds"
+	"github.com/cyverse-de/portal-conductor/ldapclient"
 )
 
 func TestUsernameValid(t *testing.T) {
@@ -80,6 +82,41 @@ func TestPortalEndpointsReturn503WhenDBNil(t *testing.T) {
 			rec := doRequest(t, handler, ep.method, ep.path, "admin", "secret", body)
 			if rec.Code != http.StatusServiceUnavailable {
 				t.Errorf("got status %d, want %d", rec.Code, http.StatusServiceUnavailable)
+			}
+		})
+	}
+}
+
+func TestCreatePortalUserReturns503WhenRequiredDependenciesMissing(t *testing.T) {
+	portalDB := &sql.DB{}
+
+	tests := []struct {
+		name       string
+		ldap       *ldapclient.Client
+		wantDetail string
+	}{
+		{
+			name:       "ldap missing",
+			ldap:       nil,
+			wantDetail: "LDAP integration not configured",
+		},
+		{
+			name:       "datastore missing",
+			ldap:       &ldapclient.Client{},
+			wantDetail: "DataStore integration not configured",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := New(testConfig(), tt.ldap, nil, nil, nil, nil, "", portalDB).Handler()
+			rec := doRequest(t, handler, http.MethodPost, "/portal/users", "admin", "secret", "")
+
+			if rec.Code != http.StatusServiceUnavailable {
+				t.Fatalf("got status %d, want %d", rec.Code, http.StatusServiceUnavailable)
+			}
+			if d := detailOf(t, rec); d != tt.wantDetail {
+				t.Errorf("got detail %v, want %s", d, tt.wantDetail)
 			}
 		})
 	}

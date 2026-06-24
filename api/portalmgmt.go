@@ -192,6 +192,12 @@ func (a *API) createPortalUser(w http.ResponseWriter, r *http.Request) error {
 	if err := a.ensurePortalDB(); err != nil {
 		return err
 	}
+	if a.ldap == nil {
+		return httpErrorf(http.StatusServiceUnavailable, "LDAP integration not configured")
+	}
+	if a.ds == nil {
+		return httpErrorf(http.StatusServiceUnavailable, "DataStore integration not configured")
+	}
 
 	// Start with defaults, then overlay the request body on top.
 	req := kinds.PortalCreateUserDefaults()
