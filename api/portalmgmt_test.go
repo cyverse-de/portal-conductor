@@ -22,13 +22,13 @@ func TestUsernameValid(t *testing.T) {
 		{"a", true},
 		{"0", true},
 		{"", false},
-		{"John", false},       // uppercase
-		{"john_doe", false},   // underscore
-		{"john-doe", false},   // hyphen
-		{"john.doe", false},   // dot
-		{"john doe", false},   // space
-		{"john@doe", false},   // special char
-		{"john123!", false},   // exclamation
+		{"John", false},     // uppercase
+		{"john_doe", false}, // underscore
+		{"john-doe", false}, // hyphen
+		{"john.doe", false}, // dot
+		{"john doe", false}, // space
+		{"john@doe", false}, // special char
+		{"john123!", false}, // exclamation
 	}
 	for _, tt := range tests {
 		t.Run(tt.username, func(t *testing.T) {
