@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
+	"net/mail"
 	"regexp"
 	"strconv"
 
@@ -19,6 +21,15 @@ var usernamePattern = regexp.MustCompile(`^[0-9a-z]+$`)
 // usernameValid checks whether a username matches the required format.
 func usernameValid(username string) bool {
 	return usernamePattern.MatchString(username)
+}
+
+// emailValid checks whether an email address has a valid format.
+func emailValid(email string) bool {
+	if email == "" {
+		return false
+	}
+	addr, err := mail.ParseAddress(email)
+	return err == nil && addr.Address == email
 }
 
 // generatePassword creates a cryptographically random password string.
@@ -212,6 +223,11 @@ func (a *API) createPortalUser(w http.ResponseWriter, r *http.Request) error {
 		return httpErrorf(http.StatusBadRequest, "Username format is invalid.")
 	}
 
+	// Validate email format.
+	if !emailValid(req.Email) {
+		return httpErrorf(http.StatusBadRequest, "Invalid email address format.")
+	}
+
 	// Check restricted.
 	isRestricted, err := portaldb.IsRestrictedUsername(ctx, a.portalDB, req.Username)
 	if err != nil {
@@ -286,12 +302,23 @@ func (a *API) createPortalUser(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("creating portal user: %w", err)
 	}
 
-	// compensate rolls back the portal DB records if a downstream step fails,
+	// compensate rolls back completed steps if a downstream step fails,
 	// so that a retry with the same username/email can succeed.
+	// Use a context that won't be cancelled by client disconnect.
+	compensateCtx := context.WithoutCancel(ctx)
+	ldapCreated := false
+
 	compensate := func(cause error, step string) error {
-		log.Printf("Provisioning failed at %s for user %s: %v — removing portal DB records", step, req.Username, cause)
-		if delErr := portaldb.DeleteUserByID(ctx, a.portalDB, userID); delErr != nil {
-			log.Printf("WARNING: compensation failed for user %s (id=%d): %v — manual cleanup required", req.Username, userID, delErr)
+		log.Printf("Provisioning failed at %s for user %s: %v — rolling back completed steps", step, req.Username, cause)
+
+		if ldapCreated {
+			if delErr := a.ldap.DeleteUser(req.Username); delErr != nil {
+				log.Printf("WARNING: LDAP cleanup failed for user %s: %v", req.Username, delErr)
+			}
+		}
+
+		if delErr := portaldb.DeleteUserByID(compensateCtx, a.portalDB, userID); delErr != nil {
+			log.Printf("WARNING: DB cleanup failed for user %s (id=%d): %v — manual cleanup required", req.Username, userID, delErr)
 		}
 		return fmt.Errorf("%s: %w", step, cause)
 	}
@@ -314,6 +341,7 @@ func (a *API) createPortalUser(w http.ResponseWriter, r *http.Request) error {
 	if err := a.ldap.CreateUserWithGroups(ldapUser, a.cfg.LDAP.EveryoneGroup, a.cfg.LDAP.CommunityGroup); err != nil {
 		return compensate(err, "creating LDAP user")
 	}
+	ldapCreated = true
 
 	// 3. Create user in DataStore.
 	log.Printf("Creating DataStore user: %s", req.Username)
