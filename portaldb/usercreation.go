@@ -12,22 +12,22 @@ import (
 // CreateUserData holds the fields required to insert a new user into the
 // portal database's account_user table.
 type CreateUserData struct {
-	Username        string
-	Email           string
-	Password        string
-	FirstName       string
-	LastName        string
-	Institution     string
-	Department      string
-	OccupationID    int
-	FundingAgencyID int
-	GenderID        int
-	EthnicityID     int
-	RegionID        int
-	ResearchAreaID  int
-	AwareChannelID  int
+	Username          string
+	Email             string
+	Password          string
+	FirstName         string
+	LastName          string
+	Institution       string
+	Department        string
+	OccupationID      int
+	FundingAgencyID   int
+	GenderID          int
+	EthnicityID       int
+	RegionID          int
+	ResearchAreaID    int
+	AwareChannelID    int
 	GridInstitutionID *int
-	HasVerifiedEmail bool
+	HasVerifiedEmail  bool
 }
 
 // UserExistsByUsername checks whether a username already exists in account_user.

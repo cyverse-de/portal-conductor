@@ -202,22 +202,22 @@ type ValidationErrorResponse struct {
 // FirstName, and LastName are required; all other fields have sensible
 // defaults for SSO-provisioned users.
 type PortalCreateUserRequest struct {
-	Username        string `json:"username"`
-	Email           string `json:"email"`
-	FirstName       string `json:"first_name"`
-	LastName        string `json:"last_name"`
-	Password        string `json:"password"`
-	Department      string `json:"department"`
-	Institution     string `json:"institution"`
-	OccupationID    int    `json:"occupation_id"`
-	FundingAgencyID int    `json:"funding_agency_id"`
-	GenderID        int    `json:"gender_id"`
-	EthnicityID     int    `json:"ethnicity_id"`
-	RegionID        int    `json:"region_id"`
-	ResearchAreaID  int    `json:"research_area_id"`
-	AwareChannelID  int    `json:"aware_channel_id"`
-	GridInstitutionID *int `json:"grid_institution_id"`
-	JobLimit        *int   `json:"job_limit"`
+	Username          string `json:"username"`
+	Email             string `json:"email"`
+	FirstName         string `json:"first_name"`
+	LastName          string `json:"last_name"`
+	Password          string `json:"password"`
+	Department        string `json:"department"`
+	Institution       string `json:"institution"`
+	OccupationID      int    `json:"occupation_id"`
+	FundingAgencyID   int    `json:"funding_agency_id"`
+	GenderID          int    `json:"gender_id"`
+	EthnicityID       int    `json:"ethnicity_id"`
+	RegionID          int    `json:"region_id"`
+	ResearchAreaID    int    `json:"research_area_id"`
+	AwareChannelID    int    `json:"aware_channel_id"`
+	GridInstitutionID *int   `json:"grid_institution_id"`
+	JobLimit          *int   `json:"job_limit"`
 }
 
 // PortalCreateUserDefaults returns a PortalCreateUserRequest pre-populated
