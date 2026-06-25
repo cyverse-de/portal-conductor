@@ -93,7 +93,7 @@ func TestUsernameParamID(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			a := New(testConfig(), nil, nil, client, nil, nil, "app-123")
+			a := New(testConfig(), nil, nil, client, nil, nil, "app-123", nil)
 			id, err := a.usernameParamID(client, "de", "app-123")
 
 			if tt.wantError {

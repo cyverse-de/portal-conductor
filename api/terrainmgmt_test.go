@@ -49,7 +49,7 @@ func TestGetJobLimits(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			handler := New(testConfig(), nil, nil, terrainClient, nil, nil, "").Handler()
+			handler := New(testConfig(), nil, nil, terrainClient, nil, nil, "", nil).Handler()
 
 			rec := doRequest(t, handler, http.MethodGet, "/terrain/users/john/job-limits", "admin", "secret", "")
 			if rec.Code != tt.wantStatus {

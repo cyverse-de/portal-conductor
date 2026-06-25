@@ -4,6 +4,8 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
@@ -20,6 +22,7 @@ import (
 	"github.com/cyverse-de/portal-conductor/emailsvc"
 	"github.com/cyverse-de/portal-conductor/ldapclient"
 	"github.com/cyverse-de/portal-conductor/mailman"
+	"github.com/cyverse-de/portal-conductor/portaldb"
 	"github.com/cyverse-de/portal-conductor/terrain"
 
 	_ "github.com/cyverse-de/portal-conductor/docs"
@@ -83,13 +86,31 @@ func buildAPI(cfg *config.Config) http.Handler {
 
 	emailService := emailsvc.New(cfg.SMTP)
 
+	// Connect to the portal database if configured. This is optional;
+	// the /portal/* endpoints will return 503 if not available.
+	var portalDBConn *sql.DB
+	if cfg.PortalDB.Host != "" && cfg.PortalDB.Name != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		portalDBConn, err = portaldb.Connect(ctx, cfg.PortalDB)
+		if err != nil {
+			log.Printf("WARNING: Failed to connect to portal database: %v", err)
+			log.Printf("Portal database endpoints will return 503")
+		} else {
+			log.Printf("Connected to portal database at %s:%d/%s",
+				cfg.PortalDB.Host, cfg.PortalDB.Port.Int(5432), cfg.PortalDB.Name)
+		}
+	} else {
+		log.Printf("Portal database not configured; /portal/* endpoints disabled")
+	}
+
 	// The user-deletion app ID is resolved by name lazily on first async use,
 	// so an unreachable Terrain can't block startup and delay health checks.
 	if cfg.TerrainAsyncConfigured() && cfg.Terrain.UserDeletionAppID == "" {
 		log.Printf("User-deletion app ID not set; it will be resolved from name '%s' on first async use", cfg.Terrain.UserDeletionAppName)
 	}
 
-	a := api.New(cfg, ldapClient, ds, terrainClient, mailmanClient, emailService, cfg.Terrain.UserDeletionAppID)
+	a := api.New(cfg, ldapClient, ds, terrainClient, mailmanClient, emailService, cfg.Terrain.UserDeletionAppID, portalDBConn)
 	return a.Handler()
 }
 

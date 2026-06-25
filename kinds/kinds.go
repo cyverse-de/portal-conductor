@@ -196,3 +196,73 @@ type ValidationError struct {
 type ValidationErrorResponse struct {
 	Detail []ValidationError `json:"detail"`
 }
+
+// PortalCreateUserRequest holds the fields for creating a user across all
+// systems (Portal DB, LDAP, DataStore, Terrain). Only Username, Email,
+// FirstName, and LastName are required; all other fields have sensible
+// defaults for SSO-provisioned users.
+type PortalCreateUserRequest struct {
+	Username          string `json:"username"`
+	Email             string `json:"email"`
+	FirstName         string `json:"first_name"`
+	LastName          string `json:"last_name"`
+	Password          string `json:"password"`
+	Department        string `json:"department"`
+	Institution       string `json:"institution"`
+	OccupationID      int    `json:"occupation_id"`
+	FundingAgencyID   int    `json:"funding_agency_id"`
+	GenderID          int    `json:"gender_id"`
+	EthnicityID       int    `json:"ethnicity_id"`
+	RegionID          int    `json:"region_id"`
+	ResearchAreaID    int    `json:"research_area_id"`
+	AwareChannelID    int    `json:"aware_channel_id"`
+	GridInstitutionID *int   `json:"grid_institution_id"`
+	JobLimit          *int   `json:"job_limit"`
+}
+
+// PortalCreateUserDefaults returns a PortalCreateUserRequest pre-populated
+// with "Not Provided" defaults for all optional fields.
+func PortalCreateUserDefaults() PortalCreateUserRequest {
+	return PortalCreateUserRequest{
+		Department:      "Not Provided",
+		Institution:     "Not Provided",
+		OccupationID:    13,   // "Not Provided"
+		FundingAgencyID: 21,   // "Not Provided"
+		GenderID:        11,   // "Not Provided"
+		EthnicityID:     8,    // "Not Provided"
+		RegionID:        4394, // "Not Provided" (US)
+		ResearchAreaID:  155,  // "Not Provided"
+		AwareChannelID:  11,   // "Not Provided"
+	}
+}
+
+// PortalCreateUserResponse is returned after successfully creating a user
+// across all systems.
+type PortalCreateUserResponse struct {
+	User   string `json:"user"`
+	UserID int64  `json:"user_id"`
+}
+
+// PortalUserExistsResponse reports whether a username exists or is restricted
+// in the portal database.
+type PortalUserExistsResponse struct {
+	Username     string `json:"username"`
+	Valid        bool   `json:"valid"`
+	Exists       bool   `json:"exists"`
+	IsRestricted bool   `json:"is_restricted"`
+}
+
+// PortalEmailExistsResponse reports whether an email address is already in
+// use in the portal database.
+type PortalEmailExistsResponse struct {
+	Email  string `json:"email"`
+	Exists bool   `json:"exists"`
+}
+
+// UsernameValidationResponse reports whether a username is valid and
+// available.
+type UsernameValidationResponse struct {
+	Username string  `json:"username"`
+	Valid    bool    `json:"valid"`
+	Reason   *string `json:"reason"`
+}

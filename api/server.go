@@ -6,6 +6,7 @@ package api
 import (
 	"bytes"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +37,11 @@ type API struct {
 	mailman *mailman.Client
 	email   *emailsvc.Service
 
+	// portalDB is the connection to the portal PostgreSQL database. It may
+	// be nil if the portal database is not configured (endpoints will
+	// return 503).
+	portalDB *sql.DB
+
 	// deletionAppID caches the user-deletion app ID; it may be resolved
 	// lazily when the startup lookup failed.
 	appIDMu       sync.Mutex
@@ -43,7 +49,7 @@ type API struct {
 }
 
 // New assembles the API from its dependencies. deletionAppID may be empty
-// when unresolved at startup.
+// when unresolved at startup. portalDB may be nil if not configured.
 func New(
 	cfg *config.Config,
 	ldapClient *ldapclient.Client,
@@ -52,6 +58,7 @@ func New(
 	mailmanClient *mailman.Client,
 	emailService *emailsvc.Service,
 	deletionAppID string,
+	portalDB *sql.DB,
 ) *API {
 	return &API{
 		cfg:           cfg,
@@ -61,6 +68,7 @@ func New(
 		mailman:       mailmanClient,
 		email:         emailService,
 		deletionAppID: deletionAppID,
+		portalDB:      portalDB,
 	}
 }
 
@@ -274,6 +282,12 @@ func (a *API) Handler() http.Handler {
 	// Terrain
 	mux.Handle("GET /terrain/users/{username}/job-limits", a.protected(a.getJobLimits))
 	mux.Handle("POST /terrain/users/{username}/job-limits", a.protected(a.setJobLimits))
+
+	// Portal database management
+	mux.Handle("GET /portal/users/{username}/exists", a.protected(a.checkPortalUserExists))
+	mux.Handle("GET /portal/emails/{email}/exists", a.protected(a.checkPortalEmailExists))
+	mux.Handle("POST /portal/users/{username}/validate", a.protected(a.validatePortalUsername))
+	mux.Handle("POST /portal/users", a.protected(a.createPortalUser))
 
 	mux.HandleFunc("/", notFound)
 
