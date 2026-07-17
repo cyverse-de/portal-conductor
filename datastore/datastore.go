@@ -16,6 +16,14 @@ import (
 
 const applicationName = "portal-conductor"
 
+// irodsAdminMode runs iRODS ACL and inheritance changes in rodsadmin ("-M")
+// mode. The connecting account provisions and re-permissions other users' home
+// collections, which iRODS creates owned by the user rather than by us; without
+// admin mode the ownership grants fail with CAT_NO_ACCESS_PERMISSION. The
+// service already requires this account to be a rodsadmin for user creation and
+// password changes, so admin mode adds no new privilege requirement.
+const irodsAdminMode = true
+
 // DataStore performs the iRODS operations needed by the portal. The
 // underlying connection is established lazily on first use so the service
 // can start while iRODS is unavailable, matching python-irodsclient's lazy
@@ -201,7 +209,7 @@ func (d *DataStore) setOwnerIfNeeded(fs *irodsfs.FileSystem, currentPerms []*typ
 		}
 	}
 	log.Printf("Setting owner permission for %s on %s", username, irodsPath)
-	return fs.ChangeACLs(irodsPath, types.IRODSAccessLevelOwner, username, d.zone, false, false)
+	return fs.ChangeACLs(irodsPath, types.IRODSAccessLevelOwner, username, d.zone, false, irodsAdminMode)
 }
 
 func (d *DataStore) setInheritIfNeeded(fs *irodsfs.FileSystem, irodsPath string) error {
@@ -209,7 +217,7 @@ func (d *DataStore) setInheritIfNeeded(fs *irodsfs.FileSystem, irodsPath string)
 	if err == nil && inheritance != nil && inheritance.Inheritance {
 		return nil
 	}
-	return fs.ChangeDirACLInheritance(irodsPath, true, false, false)
+	return fs.ChangeDirACLInheritance(irodsPath, true, false, irodsAdminMode)
 }
 
 // EnsureUserExists creates the user and their home collection if necessary.
@@ -233,7 +241,7 @@ func (d *DataStore) EnsureUserExists(username string) error {
 		if err := fs.MakeDir(home, true); err != nil {
 			return err
 		}
-		if err := fs.ChangeACLs(home, types.IRODSAccessLevelOwner, username, d.zone, false, false); err != nil {
+		if err := fs.ChangeACLs(home, types.IRODSAccessLevelOwner, username, d.zone, false, irodsAdminMode); err != nil {
 			return err
 		}
 	}
