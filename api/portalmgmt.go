@@ -33,8 +33,10 @@ func emailValid(email string) bool {
 }
 
 // generatePassword creates a cryptographically random password string.
+// It uses 24 random bytes, which base64-encodes to a 32-character string —
+// safely within iRODS's 40-character password length limit.
 func generatePassword() (string, error) {
-	b := make([]byte, 36)
+	b := make([]byte, 24)
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("generating random password: %w", err)
 	}
