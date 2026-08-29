@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cyverse-de/portal-conductor/config"
 )
@@ -115,5 +116,60 @@ func TestSendUsesHostnameForEHLO(t *testing.T) {
 		if !strings.Contains(message, header) {
 			t.Errorf("delivered message missing %q:\n%s", header, message)
 		}
+	}
+}
+
+// TestConnectDoesNotBlockOnASilentRelay checks that a relay which accepts the
+// connection and then says nothing fails instead of blocking forever.
+// Configuring an implicit-TLS relay without use_ssl looks exactly like this
+// from this end: the relay waits for a ClientHello while smtplib waits for a
+// greeting. dialTimeout only covers the TCP connect, so without a deadline on
+// the greeting itself the send goroutine is wedged permanently.
+func TestConnectDoesNotBlockOnASilentRelay(t *testing.T) {
+	original := dialTimeout
+	t.Cleanup(func() { dialTimeout = original })
+	dialTimeout = 200 * time.Millisecond
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() }) //nolint:errcheck
+
+	// Accept the connection and hold it open without ever writing a greeting.
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		accepted <- conn
+	}()
+	t.Cleanup(func() {
+		select {
+		case conn := <-accepted:
+			conn.Close() //nolint:errcheck
+		default:
+		}
+	})
+
+	svc := New(config.SMTP{
+		Host: "127.0.0.1",
+		Port: config.FlexString(strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)),
+		From: "noreply@site.org",
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- svc.Send([]string{"someone@example.org"}, "Hello", ptr("body text"), nil, nil, nil)
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected an error from a relay that never greets, got nil")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Send blocked on a relay that never greets: the SMTP greeting is not bounded by a deadline")
 	}
 }

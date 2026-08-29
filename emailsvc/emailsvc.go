@@ -23,7 +23,9 @@ import (
 	"github.com/cyverse-de/portal-conductor/config"
 )
 
-const dialTimeout = 30 * time.Second
+// dialTimeout bounds the TCP connect and the SMTP greeting. A variable rather
+// than a constant so that tests can shrink it.
+var dialTimeout = 30 * time.Second
 
 // Service sends email through the configured SMTP server.
 type Service struct {
@@ -109,37 +111,65 @@ func (s *Service) send(to []string, subject string, textBody, htmlBody, fromEmai
 
 func (s *Service) connect() (*smtp.Client, error) {
 	addr := net.JoinHostPort(s.host, strconv.Itoa(s.port))
-	if s.useSSL {
-		conn, err := tls.DialWithDialer(&net.Dialer{Timeout: dialTimeout}, "tcp", addr, &tls.Config{ServerName: s.host})
-		if err != nil {
-			return nil, fmt.Errorf("connecting to SMTP server %s over TLS: %w", addr, err)
-		}
-		client, err := smtp.NewClient(conn, s.host)
-		if err != nil {
-			return nil, err
-		}
-		return helloClient(client)
+
+	conn, err := s.dial(addr)
+	if err != nil {
+		return nil, err
 	}
 
-	conn, err := net.DialTimeout("tcp", addr, dialTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("connecting to SMTP server %s: %w", addr, err)
+	// Bound the greeting and any handshake. Without this, a relay that accepts
+	// the connection and then says nothing blocks the caller forever, which is
+	// what an implicit-TLS relay configured without use_ssl looks like from
+	// here: it waits for a ClientHello while we wait for a greeting.
+	if err := conn.SetDeadline(time.Now().Add(dialTimeout)); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("setting a deadline on the connection to %s: %w", addr, err)
 	}
+
 	client, err := smtp.NewClient(conn, s.host)
 	if err != nil {
 		_ = conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("SMTP greeting from %s failed: %w", addr, err)
 	}
 	if client, err = helloClient(client); err != nil {
 		return nil, err
 	}
+
 	if s.useTLS {
 		if err := client.StartTLS(&tls.Config{ServerName: s.host}); err != nil {
 			_ = client.Close()
 			return nil, fmt.Errorf("STARTTLS with %s failed: %w", addr, err)
 		}
 	}
+
+	// The session is established. Clear the deadline so that a slow but healthy
+	// transfer isn't cut off part way through the message.
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("clearing the deadline on the connection to %s: %w", addr, err)
+	}
+
 	return client, nil
+}
+
+// dial opens the connection to the relay, encrypted from the first byte when
+// use_ssl is set, as relays on the implicit-TLS port expect.
+func (s *Service) dial(addr string) (net.Conn, error) {
+	if s.useSSL {
+		conn, err := tls.DialWithDialer(
+			&net.Dialer{Timeout: dialTimeout}, "tcp", addr, &tls.Config{ServerName: s.host},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("connecting to SMTP server %s over TLS: %w", addr, err)
+		}
+		return conn, nil
+	}
+
+	conn, err := net.DialTimeout("tcp", addr, dialTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to SMTP server %s: %w", addr, err)
+	}
+	return conn, nil
 }
 
 // helloClient sends EHLO with the local hostname. net/smtp defaults to
