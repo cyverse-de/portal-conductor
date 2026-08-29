@@ -122,8 +122,8 @@ func TestSendUsesHostnameForEHLO(t *testing.T) {
 // TestConnectDoesNotBlockOnASilentRelay checks that a relay which accepts the
 // connection and then says nothing fails instead of blocking forever.
 // Configuring an implicit-TLS relay without use_ssl looks exactly like this
-// from this end: the relay waits for a ClientHello while smtplib waits for a
-// greeting. dialTimeout only covers the TCP connect, so without a deadline on
+// from this end: the relay waits for a ClientHello while the client waits for
+// a greeting. dialTimeout only covers the TCP connect, so without a deadline on
 // the greeting itself the send goroutine is wedged permanently.
 func TestConnectDoesNotBlockOnASilentRelay(t *testing.T) {
 	original := dialTimeout
