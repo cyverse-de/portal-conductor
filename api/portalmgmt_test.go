@@ -48,9 +48,11 @@ func TestGeneratePassword(t *testing.T) {
 	if len(pw) == 0 {
 		t.Fatal("generatePassword() returned empty string")
 	}
-	// base64 of 36 bytes = 48 characters
-	if len(pw) != 48 {
-		t.Errorf("generatePassword() length = %d, want 48", len(pw))
+	// 24 random bytes base64-encode to 32 characters. The length is deliberate:
+	// iRODS rejects passwords longer than 40 characters, so raising it needs to
+	// stay under that cap. See generatePassword.
+	if len(pw) != 32 {
+		t.Errorf("generatePassword() length = %d, want 32", len(pw))
 	}
 
 	// Two calls should produce different results.
