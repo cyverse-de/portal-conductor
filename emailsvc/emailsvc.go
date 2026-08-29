@@ -174,7 +174,7 @@ func (s *Service) dial(addr string) (net.Conn, error) {
 
 // helloClient sends EHLO with the local hostname. net/smtp defaults to
 // "localhost", which lands in the receiving MTA's Received header and is a
-// strong spam signal; Python's smtplib used the host FQDN.
+// strong spam signal.
 func helloClient(client *smtp.Client) (*smtp.Client, error) {
 	if err := client.Hello(localHostname()); err != nil {
 		_ = client.Close()
