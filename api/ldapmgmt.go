@@ -111,6 +111,86 @@ func (a *API) removeUserFromLDAPGroup(w http.ResponseWriter, r *http.Request) er
 	return nil
 }
 
+// maxUserSearchBatch bounds one bulk lookup. The groups service caps a member
+// listing at the same order of magnitude, so a legitimate caller stays well
+// under it; a larger request is a mistake worth reporting.
+const maxUserSearchBatch = 1000
+
+// searchUserLDAPInfo looks up several users' LDAP attributes in one request.
+// @Summary      Look up several LDAP users
+// @Description  Return the LDAP attributes of each named user. Usernames with no directory entry are omitted from the response rather than reported, so a caller compares lengths to find them. Batched server-side, which is what makes this cheaper than a request per user.
+// @Accept       json
+// @Produce      json
+// @Param        request body kinds.UserLDAPSearchRequest true "Usernames to look up"
+// @Success      200 {object} kinds.UserLDAPSearchResponse
+// @Failure      413 {object} kinds.GenericResponse "Too many usernames in one request"
+// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Security     BasicAuth
+// @Router       /ldap/users/search [post]
+func (a *API) searchUserLDAPInfo(w http.ResponseWriter, r *http.Request) error {
+	var req kinds.UserLDAPSearchRequest
+	if err := decodeBody(r, &req, "usernames"); err != nil {
+		return err
+	}
+	if len(req.Usernames) > maxUserSearchBatch {
+		return httpErrorf(http.StatusRequestEntityTooLarge,
+			"%d usernames in one request, more than the %d allowed",
+			len(req.Usernames), maxUserSearchBatch)
+	}
+
+	entries, err := a.ldap.GetUsers(req.Usernames)
+	if err != nil {
+		return err
+	}
+
+	// Ordered by the request rather than by what the directory returned, so a
+	// caller can pair the results with what it asked for.
+	users := make([]kinds.UserLDAPInfo, 0, len(entries))
+	seen := make(map[string]struct{}, len(entries))
+	for _, username := range req.Usernames {
+		entry, ok := entries[username]
+		if !ok {
+			continue
+		}
+		if _, dup := seen[username]; dup {
+			continue
+		}
+		seen[username] = struct{}{}
+		users = append(users, ldapclient.ParseUserAttributes(username, entry))
+	}
+	writeJSON(w, http.StatusOK, kinds.UserLDAPSearchResponse{Users: users})
+	return nil
+}
+
+// searchLDAPUsers finds users by a substring of their username, name or email.
+// @Summary      Search LDAP users
+// @Description  Return the LDAP attributes of users whose username, common name or email contains the search term. Results are capped; an empty term matches nothing.
+// @Produce      json
+// @Param        search query string true "Substring to match against username, common name and email"
+// @Success      200 {object} kinds.UserLDAPSearchResponse
+// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
+// @Security     BasicAuth
+// @Router       /ldap/users [get]
+func (a *API) searchLDAPUsers(w http.ResponseWriter, r *http.Request) error {
+	term := r.URL.Query().Get("search")
+
+	entries, err := a.ldap.SearchUsers(term)
+	if err != nil {
+		return err
+	}
+
+	users := make([]kinds.UserLDAPInfo, 0, len(entries))
+	for _, entry := range entries {
+		uid := entry.GetAttributeValue("uid")
+		if uid == "" {
+			continue
+		}
+		users = append(users, ldapclient.ParseUserAttributes(uid, entry))
+	}
+	writeJSON(w, http.StatusOK, kinds.UserLDAPSearchResponse{Users: users})
+	return nil
+}
+
 // getUserLDAPInfo returns the full LDAP profile for a user.
 // @Summary      Get LDAP user info
 // @Description  Retrieve the LDAP attributes of a user.

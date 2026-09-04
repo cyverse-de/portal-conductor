@@ -9,6 +9,7 @@ import (
 	"log"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-ldap/ldap/v3"
@@ -118,6 +119,106 @@ func (c *Client) GetUser(username string) (*ldap.Entry, error) {
 		return nil
 	})
 	return entry, err
+}
+
+// maxUsersPerSearch bounds how many uids go into one search filter. A directory
+// may reject or truncate an over-long filter, and the limit is not reported in
+// any way a caller could distinguish from the users simply not existing.
+const maxUsersPerSearch = 100
+
+// GetUsers returns the posixAccount entries for the given usernames, keyed by
+// username. Usernames that match no entry are absent from the result rather
+// than reported as an error, matching GetUser's treatment of a missing user.
+//
+// The lookup is batched: one search covers up to maxUsersPerSearch usernames,
+// where calling GetUser per username costs a connection and a bind each.
+func (c *Client) GetUsers(usernames []string) (map[string]*ldap.Entry, error) {
+	entries := make(map[string]*ldap.Entry, len(usernames))
+	if len(usernames) == 0 {
+		return entries, nil
+	}
+
+	// Deduplicated so a repeated username does not enlarge the filter, and so
+	// the batches stay the size they claim to be.
+	unique := make([]string, 0, len(usernames))
+	seen := make(map[string]struct{}, len(usernames))
+	for _, username := range usernames {
+		if _, dup := seen[username]; dup {
+			continue
+		}
+		seen[username] = struct{}{}
+		unique = append(unique, username)
+	}
+
+	err := c.do(func(conn *ldap.Conn) error {
+		for batch := range slices.Chunk(unique, maxUsersPerSearch) {
+			var filter strings.Builder
+			filter.WriteString("(&(objectClass=posixAccount)(|")
+			for _, username := range batch {
+				fmt.Fprintf(&filter, "(uid=%s)", ldap.EscapeFilter(username))
+			}
+			filter.WriteString("))")
+
+			found, err := c.search(conn, filter.String(), nil)
+			if err != nil {
+				return err
+			}
+			for _, entry := range found {
+				if uid := entry.GetAttributeValue("uid"); uid != "" {
+					entries[uid] = entry
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// maxUserSearchResults bounds a substring search. The directory holds tens of
+// thousands of people and a short term matches most of them, so an unbounded
+// search would return a response nobody asked for and nothing could display.
+const maxUserSearchResults = 100
+
+// SearchUsers returns the posixAccount entries whose username, common name or
+// email contains term, up to maxUserSearchResults. An empty term matches
+// nothing rather than everything.
+func (c *Client) SearchUsers(term string) ([]*ldap.Entry, error) {
+	if strings.TrimSpace(term) == "" {
+		return nil, nil
+	}
+
+	escaped := ldap.EscapeFilter(term)
+	filter := fmt.Sprintf(
+		"(&(objectClass=posixAccount)(|(uid=*%s*)(cn=*%s*)(mail=*%s*)))",
+		escaped, escaped, escaped)
+
+	var entries []*ldap.Entry
+	err := c.do(func(conn *ldap.Conn) error {
+		req := ldap.NewSearchRequest(
+			c.baseDN, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases,
+			maxUserSearchResults, 0, false, filter, nil, nil,
+		)
+		res, err := conn.Search(req)
+		// A directory that enforces its own smaller limit reports the overrun
+		// rather than the partial result; the partial result is what we asked
+		// for, so take it.
+		if ldap.IsErrorWithCode(err, ldap.LDAPResultSizeLimitExceeded) && res != nil {
+			entries = res.Entries
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		entries = res.Entries
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return entries, nil
 }
 
 // GetUserDN returns the DN of the person entry for username, or "" if not found.
