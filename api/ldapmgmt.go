@@ -111,14 +111,13 @@ func (a *API) removeUserFromLDAPGroup(w http.ResponseWriter, r *http.Request) er
 	return nil
 }
 
-// maxUserSearchBatch bounds one bulk lookup. The groups service caps a member
-// listing at the same order of magnitude, so a legitimate caller stays well
-// under it; a larger request is a mistake worth reporting.
+// maxUserSearchBatch bounds one bulk lookup. A larger request is a mistake
+// worth reporting rather than a listing worth issuing.
 const maxUserSearchBatch = 1000
 
 // searchUserLDAPInfo looks up several users' LDAP attributes in one request.
 // @Summary      Look up several LDAP users
-// @Description  Return the LDAP attributes of each named user. Usernames with no directory entry are omitted from the response rather than reported, so a caller compares lengths to find them. Batched server-side, which is what makes this cheaper than a request per user.
+// @Description  Return the LDAP attributes of each named user. Usernames with no directory entry are omitted rather than reported; results come back in request order and echo the spelling that was sent, so a caller finds the unknown ones by diffing the returned usernames against what it asked for. Matching ignores case, as the directory does. Batched server-side, which is what makes this cheaper than a request per user.
 // @Accept       json
 // @Produce      json
 // @Param        request body kinds.UserLDAPSearchRequest true "Usernames to look up"
@@ -143,19 +142,24 @@ func (a *API) searchUserLDAPInfo(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	// Ordered by the request rather than by what the directory returned, so a
-	// caller can pair the results with what it asked for.
+	// Ordered by the request rather than by what the directory returned, and
+	// reporting the spelling the caller sent, so results pair with the request.
+	//
+	// Folded on both sides: uid matches case-insensitively, so an entry the
+	// directory found for "Alice" is keyed under "alice", and pairing on the
+	// raw string would drop the user from the response without an error.
 	users := make([]kinds.UserLDAPInfo, 0, len(entries))
 	seen := make(map[string]struct{}, len(entries))
 	for _, username := range req.Usernames {
-		entry, ok := entries[username]
+		lowered := strings.ToLower(username)
+		entry, ok := entries[lowered]
 		if !ok {
 			continue
 		}
-		if _, dup := seen[username]; dup {
+		if _, dup := seen[lowered]; dup {
 			continue
 		}
-		seen[username] = struct{}{}
+		seen[lowered] = struct{}{}
 		users = append(users, ldapclient.ParseUserAttributes(username, entry))
 	}
 	writeJSON(w, http.StatusOK, kinds.UserLDAPSearchResponse{Users: users})
@@ -166,9 +170,8 @@ func (a *API) searchUserLDAPInfo(w http.ResponseWriter, r *http.Request) error {
 // @Summary      Search LDAP users
 // @Description  Return the LDAP attributes of users whose username, common name or email contains the search term. Results are capped; an empty term matches nothing.
 // @Produce      json
-// @Param        search query string true "Substring to match against username, common name and email"
+// @Param        search query string false "Substring to match against username, common name and email. Omitted or blank matches nothing."
 // @Success      200 {object} kinds.UserLDAPSearchResponse
-// @Failure      422 {object} kinds.ValidationErrorResponse "Validation error"
 // @Security     BasicAuth
 // @Router       /ldap/users [get]
 func (a *API) searchLDAPUsers(w http.ResponseWriter, r *http.Request) error {

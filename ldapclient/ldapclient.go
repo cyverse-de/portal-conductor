@@ -126,9 +126,42 @@ func (c *Client) GetUser(username string) (*ldap.Entry, error) {
 // any way a caller could distinguish from the users simply not existing.
 const maxUsersPerSearch = 100
 
+// usersFilter matches any of the given usernames. Each is escaped, so a name
+// containing filter syntax cannot widen the search.
+func usersFilter(usernames []string) string {
+	var filter strings.Builder
+	filter.WriteString("(&(objectClass=posixAccount)(|")
+	for _, username := range usernames {
+		fmt.Fprintf(&filter, "(uid=%s)", ldap.EscapeFilter(username))
+	}
+	filter.WriteString("))")
+	return filter.String()
+}
+
+// foldUsernames lowercases and deduplicates usernames, preserving first-occurrence
+// order. uid matches case-insensitively in the directory, so two spellings of one
+// name would otherwise enlarge a filter and return the same entry twice.
+func foldUsernames(usernames []string) []string {
+	folded := make([]string, 0, len(usernames))
+	seen := make(map[string]struct{}, len(usernames))
+	for _, username := range usernames {
+		lowered := strings.ToLower(username)
+		if _, dup := seen[lowered]; dup {
+			continue
+		}
+		seen[lowered] = struct{}{}
+		folded = append(folded, lowered)
+	}
+	return folded
+}
+
 // GetUsers returns the posixAccount entries for the given usernames, keyed by
-// username. Usernames that match no entry are absent from the result rather
-// than reported as an error, matching GetUser's treatment of a missing user.
+// the lowercased username. uid matches case-insensitively in the directory, so
+// a caller must fold case before looking a result up or it will miss an entry
+// the directory did find.
+//
+// Usernames that match no entry are absent from the result rather than reported
+// as an error, matching GetUser's treatment of a missing user.
 //
 // The lookup is batched: one search covers up to maxUsersPerSearch usernames,
 // where calling GetUser per username costs a connection and a bind each.
@@ -138,34 +171,15 @@ func (c *Client) GetUsers(usernames []string) (map[string]*ldap.Entry, error) {
 		return entries, nil
 	}
 
-	// Deduplicated so a repeated username does not enlarge the filter, and so
-	// the batches stay the size they claim to be.
-	unique := make([]string, 0, len(usernames))
-	seen := make(map[string]struct{}, len(usernames))
-	for _, username := range usernames {
-		if _, dup := seen[username]; dup {
-			continue
-		}
-		seen[username] = struct{}{}
-		unique = append(unique, username)
-	}
-
 	err := c.do(func(conn *ldap.Conn) error {
-		for batch := range slices.Chunk(unique, maxUsersPerSearch) {
-			var filter strings.Builder
-			filter.WriteString("(&(objectClass=posixAccount)(|")
-			for _, username := range batch {
-				fmt.Fprintf(&filter, "(uid=%s)", ldap.EscapeFilter(username))
-			}
-			filter.WriteString("))")
-
-			found, err := c.search(conn, filter.String(), nil)
+		for batch := range slices.Chunk(foldUsernames(usernames), maxUsersPerSearch) {
+			found, err := c.search(conn, usersFilter(batch), nil)
 			if err != nil {
 				return err
 			}
 			for _, entry := range found {
 				if uid := entry.GetAttributeValue("uid"); uid != "" {
-					entries[uid] = entry
+					entries[strings.ToLower(uid)] = entry
 				}
 			}
 		}
@@ -201,11 +215,18 @@ func (c *Client) SearchUsers(term string) ([]*ldap.Entry, error) {
 			c.baseDN, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases,
 			maxUserSearchResults, 0, false, filter, nil, nil,
 		)
+		// Without this the cap holds only if the server honours the size limit
+		// it was sent; a server that ignores it would return the whole
+		// directory.
+		req.EnforceSizeLimit = true
+
 		res, err := conn.Search(req)
-		// A directory that enforces its own smaller limit reports the overrun
-		// rather than the partial result; the partial result is what we asked
-		// for, so take it.
-		if ldap.IsErrorWithCode(err, ldap.LDAPResultSizeLimitExceeded) && res != nil {
+		// Reaching the cap reports the overrun rather than the partial result,
+		// from either side: the client raises ErrSizeLimitExceeded, the server
+		// answers with the sizeLimitExceeded result code. The partial result is
+		// what we asked for, so take it.
+		if res != nil && (errors.Is(err, ldap.ErrSizeLimitExceeded) ||
+			ldap.IsErrorWithCode(err, ldap.LDAPResultSizeLimitExceeded)) {
 			entries = res.Entries
 			return nil
 		}

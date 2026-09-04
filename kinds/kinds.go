@@ -180,8 +180,9 @@ type UserLDAPSearchRequest struct {
 }
 
 // UserLDAPSearchResponse carries the entries that matched. A username with no
-// entry is omitted rather than reported, so the caller compares lengths to see
-// which were unknown.
+// entry is omitted rather than reported; the entries come back in request order
+// and echo the spelling that was requested, so a caller identifies the unknown
+// ones by diffing the returned usernames against what it asked for.
 type UserLDAPSearchResponse struct {
 	Users []UserLDAPInfo `json:"users"`
 }

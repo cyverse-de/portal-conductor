@@ -577,10 +577,10 @@ paths:
         or email contains the search term. Results are capped; an empty term matches
         nothing.
       parameters:
-      - description: Substring to match against username, common name and email
+      - description: Substring to match against username, common name and email. Omitted
+          or blank matches nothing.
         in: query
         name: search
-        required: true
         type: string
       produces:
       - application/json
@@ -589,10 +589,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/kinds.UserLDAPSearchResponse'
-        "422":
-          description: Validation error
-          schema:
-            $ref: '#/definitions/kinds.ValidationErrorResponse'
       security:
       - BasicAuth: []
       summary: Search LDAP users
@@ -780,8 +776,10 @@ paths:
       consumes:
       - application/json
       description: Return the LDAP attributes of each named user. Usernames with no
-        directory entry are omitted from the response rather than reported, so a caller
-        compares lengths to find them. Batched server-side, which is what makes this
+        directory entry are omitted rather than reported; results come back in request
+        order and echo the spelling that was sent, so a caller finds the unknown ones
+        by diffing the returned usernames against what it asked for. Matching ignores
+        case, as the directory does. Batched server-side, which is what makes this
         cheaper than a request per user.
       parameters:
       - description: Usernames to look up

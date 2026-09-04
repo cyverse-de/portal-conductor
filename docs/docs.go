@@ -406,10 +406,9 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Substring to match against username, common name and email",
+                        "description": "Substring to match against username, common name and email. Omitted or blank matches nothing.",
                         "name": "search",
-                        "in": "query",
-                        "required": true
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -417,12 +416,6 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/kinds.UserLDAPSearchResponse"
-                        }
-                    },
-                    "422": {
-                        "description": "Validation error",
-                        "schema": {
-                            "$ref": "#/definitions/kinds.ValidationErrorResponse"
                         }
                     }
                 }
@@ -475,7 +468,7 @@ const docTemplate = `{
                         "BasicAuth": []
                     }
                 ],
-                "description": "Return the LDAP attributes of each named user. Usernames with no directory entry are omitted from the response rather than reported, so a caller compares lengths to find them. Batched server-side, which is what makes this cheaper than a request per user.",
+                "description": "Return the LDAP attributes of each named user. Usernames with no directory entry are omitted rather than reported; results come back in request order and echo the spelling that was sent, so a caller finds the unknown ones by diffing the returned usernames against what it asked for. Matching ignores case, as the directory does. Batched server-side, which is what makes this cheaper than a request per user.",
                 "consumes": [
                     "application/json"
                 ],
