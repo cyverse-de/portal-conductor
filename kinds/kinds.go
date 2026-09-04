@@ -174,6 +174,19 @@ type UserLDAPInfo struct {
 	ObjectClasses    *[]string `json:"object_classes"`
 }
 
+// UserLDAPSearchRequest asks for several users' LDAP attributes at once.
+type UserLDAPSearchRequest struct {
+	Usernames []string `json:"usernames"`
+}
+
+// UserLDAPSearchResponse carries the entries that matched. A username with no
+// entry is omitted rather than reported; the entries come back in request order
+// and echo the spelling that was requested, so a caller identifies the unknown
+// ones by diffing the returned usernames against what it asked for.
+type UserLDAPSearchResponse struct {
+	Users []UserLDAPInfo `json:"users"`
+}
+
 // LDAPGroupInfo carries the LDAP attributes of a posixGroup entry.
 type LDAPGroupInfo struct {
 	Name           string    `json:"name"`

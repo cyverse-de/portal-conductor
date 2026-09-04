@@ -260,6 +260,8 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /ldap/users/{username}/groups/{groupname}", a.protected(a.addUserToLDAPGroup))
 	mux.Handle("GET /ldap/users/{username}/groups", a.protected(a.getUserLDAPGroups))
 	mux.Handle("DELETE /ldap/users/{username}/groups/{groupname}", a.protected(a.removeUserFromLDAPGroup))
+	mux.Handle("POST /ldap/users/search", a.protected(a.searchUserLDAPInfo))
+	mux.Handle("GET /ldap/users", a.protected(a.searchLDAPUsers))
 	mux.Handle("GET /ldap/users/{username}", a.protected(a.getUserLDAPInfo))
 	mux.Handle("GET /ldap/users/{username}/exists", a.protected(a.checkUserExistsInLDAP))
 	mux.Handle("GET /ldap/groups", a.protected(a.getLDAPGroups))

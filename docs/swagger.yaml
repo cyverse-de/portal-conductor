@@ -158,6 +158,66 @@ definitions:
       password:
         type: string
     type: object
+  kinds.PortalCreateUserRequest:
+    properties:
+      aware_channel_id:
+        type: integer
+      department:
+        type: string
+      email:
+        type: string
+      ethnicity_id:
+        type: integer
+      first_name:
+        type: string
+      funding_agency_id:
+        type: integer
+      gender_id:
+        type: integer
+      grid_institution_id:
+        type: integer
+      institution:
+        type: string
+      job_limit:
+        type: integer
+      last_name:
+        type: string
+      occupation_id:
+        type: integer
+      password:
+        type: string
+      region_id:
+        type: integer
+      research_area_id:
+        type: integer
+      username:
+        type: string
+    type: object
+  kinds.PortalCreateUserResponse:
+    properties:
+      user:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  kinds.PortalEmailExistsResponse:
+    properties:
+      email:
+        type: string
+      exists:
+        type: boolean
+    type: object
+  kinds.PortalUserExistsResponse:
+    properties:
+      exists:
+        type: boolean
+      is_restricted:
+        type: boolean
+      username:
+        type: string
+      valid:
+        type: boolean
+    type: object
   kinds.UserAttributeModifyRequest:
     properties:
       value:
@@ -211,10 +271,33 @@ definitions:
       username:
         type: string
     type: object
+  kinds.UserLDAPSearchRequest:
+    properties:
+      usernames:
+        items:
+          type: string
+        type: array
+    type: object
+  kinds.UserLDAPSearchResponse:
+    properties:
+      users:
+        items:
+          $ref: '#/definitions/kinds.UserLDAPInfo'
+        type: array
+    type: object
   kinds.UserResponse:
     properties:
       user:
         type: string
+    type: object
+  kinds.UsernameValidationResponse:
+    properties:
+      reason:
+        type: string
+      username:
+        type: string
+      valid:
+        type: boolean
     type: object
   kinds.ValidateResponse:
     properties:
@@ -489,6 +572,26 @@ paths:
       - BasicAuth: []
       summary: Get LDAP groups
   /ldap/users:
+    get:
+      description: Return the LDAP attributes of users whose username, common name
+        or email contains the search term. Results are capped; an empty term matches
+        nothing.
+      parameters:
+      - description: Substring to match against username, common name and email. Omitted
+          or blank matches nothing.
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.UserLDAPSearchResponse'
+      security:
+      - BasicAuth: []
+      summary: Search LDAP users
     post:
       consumes:
       - application/json
@@ -668,6 +771,41 @@ paths:
       security:
       - BasicAuth: []
       summary: Add user to LDAP group
+  /ldap/users/search:
+    post:
+      consumes:
+      - application/json
+      description: Return the LDAP attributes of each named user. Usernames with no
+        directory entry are omitted rather than reported; results come back in request
+        order and echo the spelling that was sent, so a caller finds the unknown ones
+        by diffing the returned usernames against what it asked for. Matching ignores
+        case, as the directory does. Batched server-side, which is what makes this
+        cheaper than a request per user.
+      parameters:
+      - description: Usernames to look up
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/kinds.UserLDAPSearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.UserLDAPSearchResponse'
+        "413":
+          description: Too many usernames in one request
+          schema:
+            $ref: '#/definitions/kinds.GenericResponse'
+        "422":
+          description: Validation error
+          schema:
+            $ref: '#/definitions/kinds.ValidationErrorResponse'
+      security:
+      - BasicAuth: []
+      summary: Look up several LDAP users
   /mailinglists/{listname}/members:
     get:
       description: Retrieve a list of members in a mailing list.
@@ -781,6 +919,120 @@ paths:
       security:
       - BasicAuth: []
       summary: Check email in mailing list
+  /portal/emails/{email}/exists:
+    get:
+      description: Case-insensitive check against account_emailaddress table.
+      parameters:
+      - description: Email address to check
+        in: path
+        name: email
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.PortalEmailExistsResponse'
+        "503":
+          description: Portal database not configured
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BasicAuth: []
+      summary: Check if email exists in portal DB
+  /portal/users:
+    post:
+      consumes:
+      - application/json
+      description: 'Full user registration: portal DB, LDAP, iRODS datastore, and
+        Terrain job limits.'
+      parameters:
+      - description: User creation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/kinds.PortalCreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/kinds.PortalCreateUserResponse'
+        "400":
+          description: Username/email conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Validation error
+          schema:
+            $ref: '#/definitions/kinds.ValidationErrorResponse'
+        "503":
+          description: Portal database not configured
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BasicAuth: []
+      summary: Create user in all systems
+  /portal/users/{username}/exists:
+    get:
+      description: Checks both account_user and account_restrictedusername tables.
+      parameters:
+      - description: Username to check
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.PortalUserExistsResponse'
+        "503":
+          description: Portal database not configured
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BasicAuth: []
+      summary: Check if username exists in portal DB
+  /portal/users/{username}/validate:
+    post:
+      description: Checks format (lowercase alphanumeric), restricted list, and availability.
+      parameters:
+      - description: Username to validate
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kinds.UsernameValidationResponse'
+        "503":
+          description: Portal database not configured
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BasicAuth: []
+      summary: Validate username
   /terrain/users/{username}/job-limits:
     get:
       description: Get VICE job limits for a specific user.
