@@ -325,7 +325,7 @@ func removeMember(conn *ldap.Conn, username, groupDN string) error {
 	req.Delete("memberUid", []string{username})
 	err := conn.Modify(req)
 	if isMissingMember(err) {
-		log.Printf("User %s was not a memberUid of %s; it was probably removed concurrently, so treating it as removed", username, groupDN)
+		log.Printf("User %s is not a memberUid of %s on the server that handled the modify; a stale replica answered the search or an earlier run removed it, so treating it as removed", username, groupDN)
 		return nil
 	}
 	if err != nil {

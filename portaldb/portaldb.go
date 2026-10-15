@@ -115,8 +115,11 @@ type deleteStep struct {
 }
 
 // deleteSteps removes the user's records in an order that satisfies the
-// foreign-key constraints: logs before their parent request records, email
-// mailing-list links before email addresses, and the user row last.
+// foreign-key constraints: logs before their parent request records, workshop
+// form submissions before form submissions, workshop memberships before
+// enrollment requests, email mailing-list links before email addresses, and
+// the user row last. Workshops the user created (api_workshop.creator_id) are
+// left alone because they belong to other participants too.
 var deleteSteps = []deleteStep{
 	// Legacy tables (from v1, no longer used)
 	{"django_cyverse_auth_token", `DELETE FROM django_cyverse_auth_token WHERE user_id = $1`},
@@ -138,9 +141,16 @@ var deleteSteps = []deleteStep{
 	// Core tables
 	{"account_passwordreset", `DELETE FROM account_passwordreset WHERE user_id = $1`},
 	{"account_passwordresetrequest", `DELETE FROM account_passwordresetrequest WHERE user_id = $1`},
+	{"account_user_groups", `DELETE FROM account_user_groups WHERE user_id = $1`},
+	{"account_user_user_permissions", `DELETE FROM account_user_user_permissions WHERE user_id = $1`},
+	{"account_userinstitution", `DELETE FROM account_userinstitution WHERE user_id = $1`},
 	{"api_userservice", `DELETE FROM api_userservice WHERE user_id = $1`},
+	{"api_workshopformsubmission", `DELETE FROM api_workshopformsubmission WHERE user_id = $1`},
 	{"api_formsubmission", `DELETE FROM api_formsubmission WHERE user_id = $1`},
+	{"api_userworkshop", `DELETE FROM api_userworkshop WHERE user_id = $1`},
+	{"api_userworkshopcode", `DELETE FROM api_userworkshopcode WHERE user_id = $1`},
 	{"api_workshopenrollmentrequest", `DELETE FROM api_workshopenrollmentrequest WHERE user_id = $1`},
+	{"api_accessrequestanswer", `DELETE FROM api_accessrequestanswer WHERE user_id = $1`},
 	{"api_accessrequest", `DELETE FROM api_accessrequest WHERE user_id = $1`},
 
 	{"api_workshoporganizer", `DELETE FROM api_workshoporganizer WHERE organizer_id = $1`},
