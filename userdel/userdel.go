@@ -77,9 +77,10 @@ func FromLDAP(client *ldapclient.Client, username string, dryRun bool) error {
 			continue
 		}
 		groupName := group.Attrs["cn"][0]
-		log.Printf("%sRemoving user %s from group %s", prefix, username, groupName)
+		log.Printf("%sRemoving user %s from group %s (%s)", prefix, username, groupName, group.DN)
 		if !dryRun {
-			if err := client.RemoveUserFromGroup(username, groupName); err != nil {
+			// The group search spans the whole base DN, so the group may not live under ou=Groups.
+			if err := client.RemoveUserFromGroupDN(username, group.DN); err != nil {
 				return err
 			}
 		}
