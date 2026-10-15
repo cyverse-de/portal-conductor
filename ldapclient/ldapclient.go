@@ -293,28 +293,52 @@ func (c *Client) AddUserToGroup(username, group string) error {
 	return c.do(func(conn *ldap.Conn) error { return conn.Modify(req) })
 }
 
-// RemoveUserFromGroup removes username from the memberUid attribute of the
-// group named group under ou=Groups. A user who isn't a member is not an error.
+// RemoveUserFromGroup removes username from every group named group that lists
+// them as a memberUid. The group is located by search rather than assumed to be
+// under ou=Groups, matching GetUserGroups. A user who isn't a member is not an
+// error.
 func (c *Client) RemoveUserFromGroup(username, group string) error {
-	return c.RemoveUserFromGroupDN(username, c.groupDN(group))
+	return c.do(func(conn *ldap.Conn) error {
+		filter := fmt.Sprintf("(&(objectClass=posixGroup)(cn=%s)(memberUid=%s))",
+			ldap.EscapeFilter(group), ldap.EscapeFilter(username))
+		entries, err := c.search(conn, filter, []string{"cn"})
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			if err := removeMember(conn, username, e.DN); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // RemoveUserFromGroupDN removes username from the memberUid attribute of the
 // group entry at groupDN. A user who isn't a member is not an error.
 func (c *Client) RemoveUserFromGroupDN(username, groupDN string) error {
-	req := ldap.NewModifyRequest(groupDN, nil)
-	req.Delete("memberUid", []string{username})
-	return ignoreMissingMember(c.do(func(conn *ldap.Conn) error { return conn.Modify(req) }))
+	return c.do(func(conn *ldap.Conn) error { return removeMember(conn, username, groupDN) })
 }
 
-// ignoreMissingMember drops the "no such value" error a memberUid delete
-// returns when the user was already removed, e.g. by a concurrent deletion.
-func ignoreMissingMember(err error) error {
-	var ldapErr *ldap.Error
-	if errors.As(err, &ldapErr) && ldapErr.ResultCode == ldap.LDAPResultNoSuchAttribute {
+func removeMember(conn *ldap.Conn, username, groupDN string) error {
+	req := ldap.NewModifyRequest(groupDN, nil)
+	req.Delete("memberUid", []string{username})
+	err := conn.Modify(req)
+	if isMissingMember(err) {
+		log.Printf("User %s was not a memberUid of %s; it was probably removed concurrently, so treating it as removed", username, groupDN)
 		return nil
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("removing %s from group %s failed (service bind DN lacks write access, or the group was deleted?): %w", username, groupDN, err)
+	}
+	return nil
+}
+
+// isMissingMember reports whether err is the "no such value" error a memberUid
+// delete returns when the user is no longer in the group.
+func isMissingMember(err error) bool {
+	var ldapErr *ldap.Error
+	return errors.As(err, &ldapErr) && ldapErr.ResultCode == ldap.LDAPResultNoSuchAttribute
 }
 
 // DeleteUser removes the user entry from ou=People.

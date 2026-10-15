@@ -90,7 +90,7 @@ func (a *API) getUserLDAPGroups(w http.ResponseWriter, r *http.Request) error {
 
 // removeUserFromLDAPGroup removes a user from an LDAP group.
 // @Summary      Remove user from LDAP group
-// @Description  Remove a user from a specific LDAP group.
+// @Description  Remove a user from a specific LDAP group. Succeeds if the user is not a member.
 // @Produce      json
 // @Param        username path string true "Username"
 // @Param        groupname path string true "Group name"
