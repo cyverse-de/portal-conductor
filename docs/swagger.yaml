@@ -623,7 +623,8 @@ paths:
       summary: Get user LDAP groups
   /ldap/users/{username}/groups/{groupname}:
     delete:
-      description: Remove a user from a specific LDAP group.
+      description: Remove a user from a specific LDAP group. Succeeds if the user
+        is not a member.
       parameters:
       - description: Username
         in: path

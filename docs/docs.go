@@ -646,7 +646,7 @@ const docTemplate = `{
                         "BasicAuth": []
                     }
                 ],
-                "description": "Remove a user from a specific LDAP group.",
+                "description": "Remove a user from a specific LDAP group. Succeeds if the user is not a member.",
                 "produces": [
                     "application/json"
                 ],
