@@ -180,6 +180,12 @@ func (c *Client) SetConcurrentJobLimits(username string, limit int) error {
 	return c.doAuthedJSON(http.MethodPut, c.apiURL("admin", "settings", "concurrent-job-limits", username), payload, nil)
 }
 
+// SetSubscriptionPlan assigns the named QMS subscription plan to username
+// via Terrain's admin endpoint. No request body; paid=false as query param.
+func (c *Client) SetSubscriptionPlan(username, plan string) error {
+	return c.doAuthedJSON(http.MethodPut, c.apiURL("admin", "qms", "users", username, "plan", plan)+"?paid=false", nil, nil)
+}
+
 // SearchApps searches apps by name and returns the raw AppListing document.
 func (c *Client) SearchApps(search string) (map[string]any, error) {
 	var result map[string]any
