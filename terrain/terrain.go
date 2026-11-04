@@ -165,7 +165,7 @@ func (c *Client) GetKeycloakToken() (string, error) {
 // GetConcurrentJobLimits returns the raw job-limits document for username.
 func (c *Client) GetConcurrentJobLimits(username string) (map[string]any, error) {
 	var result map[string]any
-	if err := c.doAuthedJSON(http.MethodGet, c.apiURL("admin", "settings", "concurrent-job-limits", username), nil, &result); err != nil {
+	if err := c.doAuthedJSON(http.MethodGet, c.apiURL("service", "settings", "concurrent-job-limits", username), nil, &result); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -177,13 +177,13 @@ func (c *Client) SetConcurrentJobLimits(username string, limit int) error {
 	if err != nil {
 		return err
 	}
-	return c.doAuthedJSON(http.MethodPut, c.apiURL("admin", "settings", "concurrent-job-limits", username), payload, nil)
+	return c.doAuthedJSON(http.MethodPut, c.apiURL("service", "settings", "concurrent-job-limits", username), payload, nil)
 }
 
 // SetSubscriptionPlan assigns the named QMS subscription plan to username
 // via Terrain's admin endpoint. No request body; paid=false as query param.
 func (c *Client) SetSubscriptionPlan(username, plan string) error {
-	return c.doAuthedJSON(http.MethodPut, c.apiURL("admin", "qms", "users", username, "plan", plan)+"?paid=false", nil, nil)
+	return c.doAuthedJSON(http.MethodPut, c.apiURL("service", "qms", "users", username, "plan", plan)+"?paid=false", nil, nil)
 }
 
 // SearchApps searches apps by name and returns the raw AppListing document.
