@@ -351,19 +351,19 @@ func (a *API) createPortalUser(w http.ResponseWriter, r *http.Request) error {
 		return compensate(err, "creating DataStore user")
 	}
 
-	// 4. Set job limits via Terrain (optional).
-	if a.terrain != nil && req.JobLimit != nil {
+	// 4. Set job limits via analyses service (optional).
+	if a.analyses != nil && req.JobLimit != nil {
 		log.Printf("Setting job limits for user: %s", req.Username)
-		if limitErr := a.terrain.SetConcurrentJobLimits(req.Username, *req.JobLimit); limitErr != nil {
+		if limitErr := a.analyses.SetConcurrentJobLimit(req.Username, *req.JobLimit); limitErr != nil {
 			log.Printf("WARNING: Failed to set job limits for %s: %v", req.Username, limitErr)
 			// Continue — job limits are not critical.
 		}
 	}
 
-	// 5. Assign subscription plan via Terrain/QMS (optional).
-	if a.terrain != nil && req.SubscriptionPlan != nil && *req.SubscriptionPlan != "" {
+	// 5. Assign subscription plan via subscriptions service (optional).
+	if a.subscriptions != nil && req.SubscriptionPlan != nil && *req.SubscriptionPlan != "" {
 		log.Printf("Assigning subscription plan %q to user: %s", *req.SubscriptionPlan, req.Username)
-		if planErr := a.terrain.SetSubscriptionPlan(req.Username, *req.SubscriptionPlan); planErr != nil {
+		if planErr := a.subscriptions.SetSubscriptionPlan(req.Username, *req.SubscriptionPlan, false); planErr != nil {
 			log.Printf("WARNING: Failed to assign subscription plan for %s: %v", req.Username, planErr)
 			// Continue — subscription plan assignment is not critical.
 		}

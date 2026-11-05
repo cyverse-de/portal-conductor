@@ -63,7 +63,7 @@ func TestGeneratePassword(t *testing.T) {
 }
 
 func TestPortalEndpointsReturn503WhenDBNil(t *testing.T) {
-	handler := New(testConfig(), nil, nil, nil, nil, nil, "", nil).Handler()
+	handler := New(testConfig(), nil, nil, nil, nil, nil, nil, nil, "", nil).Handler()
 
 	endpoints := []struct {
 		method string
@@ -111,7 +111,7 @@ func TestCreatePortalUserReturns503WhenRequiredDependenciesMissing(t *testing.T)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := New(testConfig(), tt.ldap, nil, nil, nil, nil, "", portalDB).Handler()
+			handler := New(testConfig(), tt.ldap, nil, nil, nil, nil, nil, nil, "", portalDB).Handler()
 			rec := doRequest(t, handler, http.MethodPost, "/portal/users", "admin", "secret", "")
 
 			if rec.Code != http.StatusServiceUnavailable {
@@ -183,7 +183,7 @@ func TestCreatePortalUserDefaultsOverlaidByJSON(t *testing.T) {
 }
 
 func TestCreatePortalUserValidationNoAuth(t *testing.T) {
-	handler := New(testConfig(), nil, nil, nil, nil, nil, "", nil).Handler()
+	handler := New(testConfig(), nil, nil, nil, nil, nil, nil, nil, "", nil).Handler()
 
 	// No auth should return 401.
 	req := httptest.NewRequest(http.MethodPost, "/portal/users", strings.NewReader(`{}`))

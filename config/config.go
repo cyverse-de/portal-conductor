@@ -133,18 +133,30 @@ type Security struct {
 	UIDNumberOffset int `json:"uid_number_offset"`
 }
 
+// Analyses holds the base URL for the analyses service (internal, no auth).
+type Analyses struct {
+	URL string `json:"url"`
+}
+
+// Subscriptions holds the base URL for the subscriptions service (internal, no auth).
+type Subscriptions struct {
+	URL string `json:"url"`
+}
+
 // Config is the top-level configuration for portal-conductor.
 type Config struct {
-	SSL      SSL      `json:"ssl"`
-	Server   Server   `json:"server"`
-	Auth     Auth     `json:"auth"`
-	LDAP     LDAP     `json:"ldap"`
-	IRODS    IRODS    `json:"irods"`
-	Terrain  Terrain  `json:"terrain"`
-	Mailman  Mailman  `json:"mailman"`
-	SMTP     SMTP     `json:"smtp"`
-	PortalDB PortalDB `json:"portal_db"`
-	Security Security `json:"security"`
+	SSL           SSL           `json:"ssl"`
+	Server        Server        `json:"server"`
+	Auth          Auth          `json:"auth"`
+	LDAP          LDAP          `json:"ldap"`
+	IRODS         IRODS         `json:"irods"`
+	Terrain       Terrain       `json:"terrain"`
+	Analyses      Analyses      `json:"analyses"`
+	Subscriptions Subscriptions `json:"subscriptions"`
+	Mailman       Mailman       `json:"mailman"`
+	SMTP          SMTP          `json:"smtp"`
+	PortalDB      PortalDB      `json:"portal_db"`
+	Security      Security      `json:"security"`
 }
 
 // defaults returns a Config pre-populated with the same defaults the Python
@@ -245,6 +257,12 @@ func fromEnv() *Config {
 		UserDeletionAppID:   os.Getenv("TERRAIN_USER_DELETION_APP_ID"),
 		UserDeletionAppName: deletionAppName,
 		SystemID:            envOr("TERRAIN_SYSTEM_ID", "de"),
+	}
+	c.Analyses = Analyses{
+		URL: envOr("ANALYSES_URL", "http://analyses/"),
+	}
+	c.Subscriptions = Subscriptions{
+		URL: envOr("SUBSCRIPTIONS_URL", "http://subscriptions/"),
 	}
 	c.Mailman = Mailman{
 		Enabled:  envBool("MAILMAN_ENABLED", false),

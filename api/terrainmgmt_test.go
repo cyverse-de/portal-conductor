@@ -40,7 +40,7 @@ func TestGetJobLimits(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := newTerrainTestServer(t, func(mux *http.ServeMux) {
-				mux.HandleFunc("/admin/settings/concurrent-job-limits/", func(w http.ResponseWriter, _ *http.Request) {
+				mux.HandleFunc("/service/settings/concurrent-job-limits/", func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(tt.limitsStatus)
 					w.Write([]byte(tt.limitsBody)) //nolint:errcheck
 				})
@@ -49,7 +49,7 @@ func TestGetJobLimits(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			handler := New(testConfig(), nil, nil, terrainClient, nil, nil, "", nil).Handler()
+			handler := New(testConfig(), nil, nil, terrainClient, nil, nil, nil, nil, "", nil).Handler()
 
 			rec := doRequest(t, handler, http.MethodGet, "/terrain/users/john/job-limits", "admin", "secret", "")
 			if rec.Code != tt.wantStatus {
