@@ -20,6 +20,8 @@ import (
 	"github.com/cyverse-de/portal-conductor/config"
 	"github.com/cyverse-de/portal-conductor/datastore"
 	"github.com/cyverse-de/portal-conductor/emailsvc"
+	"github.com/cyverse-de/portal-conductor/internal/analyses"
+	"github.com/cyverse-de/portal-conductor/internal/subscriptions"
 	"github.com/cyverse-de/portal-conductor/ldapclient"
 	"github.com/cyverse-de/portal-conductor/mailman"
 	"github.com/cyverse-de/portal-conductor/portaldb"
@@ -79,6 +81,25 @@ func buildAPI(cfg *config.Config) http.Handler {
 		log.Fatalf("Failed to configure Terrain client: %v", err)
 	}
 
+	// Internal service clients (cluster-only, no auth required).
+	var analysesClient *analyses.Client
+	if cfg.Analyses.URL != "" {
+		analysesClient, err = analyses.New(cfg.Analyses.URL)
+		if err != nil {
+			log.Fatalf("Failed to configure analyses client: %v", err)
+		}
+		log.Printf("Analyses client configured: %s", cfg.Analyses.URL)
+	}
+
+	var subscriptionsClient *subscriptions.Client
+	if cfg.Subscriptions.URL != "" {
+		subscriptionsClient, err = subscriptions.New(cfg.Subscriptions.URL)
+		if err != nil {
+			log.Fatalf("Failed to configure subscriptions client: %v", err)
+		}
+		log.Printf("Subscriptions client configured: %s", cfg.Subscriptions.URL)
+	}
+
 	mailmanClient, err := mailman.New(cfg.Mailman.URL, cfg.Mailman.Password)
 	if err != nil {
 		log.Fatalf("Failed to configure Mailman client: %v", err)
@@ -110,7 +131,7 @@ func buildAPI(cfg *config.Config) http.Handler {
 		log.Printf("User-deletion app ID not set; it will be resolved from name '%s' on first async use", cfg.Terrain.UserDeletionAppName)
 	}
 
-	a := api.New(cfg, ldapClient, ds, terrainClient, mailmanClient, emailService, cfg.Terrain.UserDeletionAppID, portalDBConn)
+	a := api.New(cfg, ldapClient, ds, terrainClient, analysesClient, subscriptionsClient, mailmanClient, emailService, cfg.Terrain.UserDeletionAppID, portalDBConn)
 	return a.Handler()
 }
 

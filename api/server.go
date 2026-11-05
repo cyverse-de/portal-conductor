@@ -19,6 +19,8 @@ import (
 	"github.com/cyverse-de/portal-conductor/datastore"
 	"github.com/cyverse-de/portal-conductor/emailsvc"
 	"github.com/cyverse-de/portal-conductor/external"
+	"github.com/cyverse-de/portal-conductor/internal/analyses"
+	"github.com/cyverse-de/portal-conductor/internal/subscriptions"
 	"github.com/cyverse-de/portal-conductor/kinds"
 	"github.com/cyverse-de/portal-conductor/ldapclient"
 	"github.com/cyverse-de/portal-conductor/mailman"
@@ -30,12 +32,14 @@ const greetingMessage = "Hello from portal-conductor."
 
 // API holds the service clients and configuration shared by all handlers.
 type API struct {
-	cfg     *config.Config
-	ldap    *ldapclient.Client
-	ds      *datastore.DataStore
-	terrain *terrain.Client
-	mailman *mailman.Client
-	email   *emailsvc.Service
+	cfg           *config.Config
+	ldap          *ldapclient.Client
+	ds            *datastore.DataStore
+	terrain       *terrain.Client
+	analyses      *analyses.Client
+	subscriptions *subscriptions.Client
+	mailman       *mailman.Client
+	email         *emailsvc.Service
 
 	// portalDB is the connection to the portal PostgreSQL database. It may
 	// be nil if the portal database is not configured (endpoints will
@@ -55,6 +59,8 @@ func New(
 	ldapClient *ldapclient.Client,
 	ds *datastore.DataStore,
 	terrainClient *terrain.Client,
+	analysesClient *analyses.Client,
+	subscriptionsClient *subscriptions.Client,
 	mailmanClient *mailman.Client,
 	emailService *emailsvc.Service,
 	deletionAppID string,
@@ -65,6 +71,8 @@ func New(
 		ldap:          ldapClient,
 		ds:            ds,
 		terrain:       terrainClient,
+		analyses:      analysesClient,
+		subscriptions: subscriptionsClient,
 		mailman:       mailmanClient,
 		email:         emailService,
 		deletionAppID: deletionAppID,
