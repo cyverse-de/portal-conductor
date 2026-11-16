@@ -1,7 +1,7 @@
 # Minimal Dockerfile for running the delete-user CLI
 # This is designed to be used as a batch job in the Discovery Environment
 
-FROM golang:1.24 AS build
+FROM golang:1.27 AS build
 
 WORKDIR /src
 
