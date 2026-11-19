@@ -59,7 +59,7 @@ func (d *DataStore) filesystem() (*irodsfs.FileSystem, error) {
 	fsConfig := irodsfs.NewFileSystemConfig(applicationName)
 	// The Python service had no metadata cache; disable it so existence
 	// checks observe deletions made by external jobs immediately.
-	fsConfig.Cache.NoCache = true
+	fsConfig.Cache.Backend = &irodsfs.CacheBackendConfig{Type: irodsfs.CacheBackendTypeNone}
 	// The Python service disabled the connection timeout entirely; the
 	// library's 1m/5m defaults are too short for deleting large home
 	// collections, so raise them well past any expected operation.
